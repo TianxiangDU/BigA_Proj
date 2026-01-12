@@ -12,13 +12,14 @@
 
 | 版本 | 日期 | 修改内容 |
 |------|------|----------|
+| v1.1.0 | 2026-01-12 | 实现 Agent API 接口，支持 Coze/Dify 对接；添加智能体对接文档 |
 | v1.0.0 | 2026-01-12 | MVP 开发完成，包含完整后端（FastAPI + SQLite）和前端（Next.js + TailwindCSS）实现 |
 | v0.1 | 2026-01-12 | 初始 PRD 版本 |
 
-### v1.0.0 实现说明
+### v1.1.0 实现说明
 
 **已实现功能：**
-1. ✅ 数据层：adata Adapter 封装，支持模拟数据降级
+1. ✅ 数据层：akshare（东方财富）实时数据 + adata 备用
 2. ✅ 数据质量：交易日历、数据延迟检测、降级策略
 3. ✅ 特征引擎：个股特征 + 市场特征 + 事件近似算法
 4. ✅ 市场情绪：情绪仪表盘 + 风险灯 + 题材追踪
@@ -30,6 +31,8 @@
 10. ✅ WebSocket：实时推送 dashboard/candidates/alerts
 11. ✅ 前端页面：Dashboard/Pool/Alerts/Portfolio/Review
 12. ✅ 响应式设计：支持桌面端和移动端
+13. ✅ **Agent API**：支持 Coze/Dify 等智能体平台对接
+14. ✅ **股票筛选器**：交易所/ST/成交额多维筛选
 
 **技术实现调整：**
 - 前端使用纯 TailwindCSS 实现组件，未引入完整 shadcn/ui（减少依赖）
@@ -501,48 +504,173 @@ event_approx:
 
 ---
 
-## 14. 智能体接口（后续接入，I/O 协议）
-> App 负责：数据/特征/候选/快照/落库/展示  
-> Agent 负责：市场状态/热点归纳/信号解释/复盘归因（可逐步接入）
+## 14. 智能体/大模型对接（Agent Integration）
 
-### 14.1 App → Agent 输入（input_bundle）
-`POST /agent/input_bundle`
+> **v1.0.0 更新**：Agent API 接口已实现，支持 Coze/Dify 等平台对接。
+
+### 14.1 系统边界与职责划分
+
+| 层级 | 职责 | 技术实现 |
+|------|------|---------|
+| **App 层** | 数据接入、特征计算、候选池生成、风控裁决、快照落库 | FastAPI + SQLite |
+| **Agent 层** | 信号解释、市场状态归纳、复盘归因、智能建议 | Coze/Dify + LLM |
+
+**关键原则**：
+- Agent 不直接拉行情（避免数据不一致）
+- Agent 输出仅为"建议"，最终裁决权在 App
+- 数据降级时 Agent 必须遵循保守原则
+
+### 14.2 已实现的 Agent API
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/agent/input_bundle` | GET | 获取结构化输入数据包 |
+| `/api/agent/apply_output` | POST | 接收 Agent 输出并应用 |
+| `/api/agent/test` | GET | 测试连通性 |
+
+### 14.3 App → Agent 输入（input_bundle）
+
+**接口**: `GET /api/agent/input_bundle?symbol=xxx&strategy_id=xxx`
+
+**返回示例**:
 ```json
 {
   "ts": "2026-01-12T10:05:00+08:00",
-  "market": { "limit_up_count": 42, "bomb_rate": 0.22, "max_streak": 4, "down_limit_count": 3, "risk_light": "YELLOW" },
-  "themes": [{"name":"AI应用","strength":0.78,"leaders":["000001","300xxx"]}],
-  "candidates": [
-    {"symbol":"300xxx","name":"示例股","tags":["AI应用","回封"],"features":{"slope_5m":0.63,"pullback_5m":0.12,"amt":120000000,"reseal_speed_sec":45,"reseal_stable_min":1}}
+  "market": {
+    "limit_up_count": 42,
+    "touch_limit_up_count": 60,
+    "bomb_rate": 0.22,
+    "max_streak": 4,
+    "down_limit_count": 3,
+    "risk_light": "YELLOW",
+    "regime_mode": "DIVERGENCE"
+  },
+  "themes": [
+    {"name": "AI应用", "strength": 0.78, "leaders": ["000001", "300xxx"]}
   ],
-  "portfolio": {"positions":[{"symbol":"600xxx","qty":1000,"avg_cost":12.3}], "cash": 50000},
-  "strategy_context": {"strategy_id":"reseal_v1","risk_profile":"balanced","selected_themes":["AI应用"]}
+  "candidates": [
+    {
+      "symbol": "300xxx",
+      "name": "示例股",
+      "tags": ["AI应用", "回封"],
+      "features": {
+        "slope_5m": 0.63,
+        "pullback_5m": 0.12,
+        "amt": 120000000,
+        "reseal_speed_sec": 45,
+        "reseal_stable_min": 1,
+        "open_count_30m": 1,
+        "vol_ratio_5m": 1.9,
+        "is_limit_up": true,
+        "near_limit_up": true
+      },
+      "scores": {
+        "total": 82.4,
+        "market": 78.0,
+        "stock": 84.0,
+        "quality": 80.0,
+        "risk_penalty": 8.0
+      }
+    }
+  ],
+  "portfolio": {
+    "positions": [{"symbol": "600xxx", "qty": 1000, "avg_cost": 12.3}],
+    "cash": 50000,
+    "daily_pnl": 0.0,
+    "consecutive_losses": 0
+  },
+  "strategy_context": {
+    "strategy_id": "reseal_v1",
+    "risk_profile": "balanced",
+    "selected_themes": ["AI应用"],
+    "data_quality": {
+      "data_lag_sec": 2,
+      "is_degraded": false,
+      "missing_fields": []
+    }
+  }
 }
 ```
 
-### 14.2 Agent → App 输出（MVP先接入 SignalExplain）
+### 14.4 Agent → App 输出（apply_output）
+
+**接口**: `POST /api/agent/apply_output`
+
+**请求体**:
 ```json
 {
-  "agent": "SignalExplain",
-  "ts": "2026-01-12T10:06:00+08:00",
-  "symbol": "300xxx",
-  "action": "WATCH | ALLOW | BLOCK",
-  "confidence": 0.82,
-  "triggers": [
-    {"name":"环境门槛","status":"PASS","detail":"YELLOW且炸板率0.22<=0.30"},
-    {"name":"回封速度","status":"PASS","detail":"45s<=60s"},
-    {"name":"稳定性","status":"PASS","detail":"回封稳定>=1min"}
-  ],
-  "plan": {
-    "max_single_position": 0.10,
-    "entry_note": "仅在再次回封且稳定性不下降时执行",
-    "exit_rules": ["开板30s不回封=>放弃/减仓","回撤扩大>阈值=>停止追"]
-  },
-  "risks": ["题材分歧扩大将提升炸板概率"],
-  "one_liner": "回封质量达标，黄灯小仓位允许，严格执行失败条件。",
-  "snapshot_hint": {"should_create_snapshot": true, "snapshot_tags":["reseal","main_theme"]}
+  "type": "SignalExplain",
+  "payload": {
+    "agent": "SignalExplain",
+    "version": "0.1.0",
+    "ts": "2026-01-12T10:06:00+08:00",
+    "symbol": "300xxx",
+    "strategy_id": "reseal_v1",
+    "action": "WATCH",
+    "confidence": 0.82,
+    "triggers": [
+      {"name": "环境门槛", "status": "PASS", "detail": "YELLOW且炸板率0.22<=0.30"},
+      {"name": "回封速度", "status": "PASS", "detail": "45s<=60s"},
+      {"name": "稳定性", "status": "PASS", "detail": "回封稳定>=1min"},
+      {"name": "强度", "status": "PASS", "detail": "slope_5m=0.63>=0.25"},
+      {"name": "回撤", "status": "PASS", "detail": "pullback=0.12<=0.18"},
+      {"name": "成交额", "status": "PASS", "detail": "amt=1.2亿>=0.8亿"}
+    ],
+    "plan": {
+      "max_single_position": 0.10,
+      "entry_note": "仅在再次回封且稳定性不下降时执行",
+      "exit_rules": [
+        "开板30s不回封=>放弃/减仓",
+        "回撤扩大>0.20=>停止追",
+        "风险灯转红=>停止新增"
+      ]
+    },
+    "risks": ["题材分歧扩大将提升炸板概率"],
+    "one_liner": "回封质量达标，黄灯小仓位允许，严格执行失败条件。",
+    "snapshot_hint": {"should_create_snapshot": true, "snapshot_tags": ["reseal", "main_theme"]},
+    "warnings": []
+  }
 }
 ```
+
+**返回**:
+```json
+{
+  "success": true,
+  "type": "SignalExplain",
+  "alert_id": "alert_xxx",
+  "snapshot_id": "snap_xxx",
+  "message": "提示卡已创建: 300xxx -> WATCH"
+}
+```
+
+### 14.5 支持的 Agent 类型
+
+| type | 说明 | 处理逻辑 |
+|------|------|---------|
+| `MarketState` | 市场状态解释 | 更新 dashboard 展示 |
+| `SignalExplain` | 信号提示卡 | 创建 alert + snapshot |
+| `ThemeHeat` | 题材热度 | 更新题材面板 |
+| `RiskCoach` | 风控建议 | 更新风控状态 |
+| `ReviewAnalyst` | 复盘分析 | 写入 alert 分析字段 |
+
+### 14.6 对接 Coze/Dify 步骤
+
+1. **创建 HTTP 插件**：
+   - `GetInputBundle`: GET `http://YOUR_IP:8000/api/agent/input_bundle`
+   - `ApplyOutput`: POST `http://YOUR_IP:8000/api/agent/apply_output`
+
+2. **配置工作流**：
+   ```
+   [触发] → [GetInputBundle] → [LLM处理] → [JSON校验] → [ApplyOutput] → [结束]
+   ```
+
+3. **LLM 节点配置**：
+   - 模型：DeepSeek-V3 / GPT-4o
+   - Temperature: 0.1-0.3（保证输出稳定）
+   - 强制 JSON 输出模式
+
+详细对接文档见：[通用Agent需求文档](./通用Agent需求文档_A股打板工具_Coze-Dify_v0.2.md)
 
 ---
 

@@ -595,6 +595,277 @@ def create_app() -> FastAPI:
         app_state.db.remove_from_blacklist(symbol)
         return {"success": True}
     
+    # ==================== Agent API ====================
+    # 供 Coze/Dify 等智能体平台调用
+    
+    @app.get("/api/agent/input_bundle")
+    async def get_agent_input_bundle(
+        symbol: Optional[str] = None,
+        strategy_id: Optional[str] = None
+    ):
+        """
+        获取 Agent 输入数据包
+        
+        用于给 Coze/Dify 等智能体平台提供结构化输入
+        
+        参数:
+        - symbol: 可选，指定股票代码（用于 SignalExplain）
+        - strategy_id: 可选，指定策略ID
+        
+        返回: input_bundle JSON
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        now = app_state.calendar.now()
+        
+        # 市场数据
+        market_data = {
+            'limit_up_count': app_state._market_features.get('limit_up_count', 0),
+            'touch_limit_up_count': app_state._market_features.get('touch_limit_up_count', 0),
+            'bomb_rate': app_state._market_features.get('bomb_rate', 0),
+            'max_streak': app_state._market_features.get('max_streak', 0),
+            'down_limit_count': app_state._market_features.get('down_limit_count', 0),
+            'risk_light': app_state._market_features.get('risk_light', 'GREEN'),
+            'regime_mode': app_state._market_features.get('regime_mode', 'NORMAL'),
+            'index_ret_15m': app_state._market_features.get('index_ret_15m', 0)
+        }
+        
+        # 题材数据
+        themes = app_state.theme_tracker.get_top_themes(5)
+        themes_data = [
+            {
+                'name': t.get('name', ''),
+                'strength': t.get('strength', 0),
+                'leaders': t.get('leaders', []),
+                'notes': t.get('notes', '')
+            }
+            for t in themes
+        ]
+        
+        # 候选池数据
+        candidates_data = []
+        target_candidates = app_state._candidates
+        
+        # 如果指定了 symbol，只返回该股票
+        if symbol:
+            target_candidates = [c for c in app_state._candidates if c.get('symbol') == symbol]
+        
+        for c in target_candidates[:20]:  # 最多20条
+            candidates_data.append({
+                'symbol': c.get('symbol', ''),
+                'name': c.get('name', ''),
+                'tags': c.get('tags', []),
+                'features': {
+                    'slope_5m': c.get('features', {}).get('slope_5m'),
+                    'pullback_5m': c.get('features', {}).get('pullback_5m'),
+                    'amt': c.get('features', {}).get('amt'),
+                    'reseal_speed_sec': c.get('features', {}).get('reseal_speed_sec'),
+                    'reseal_stable_min': c.get('features', {}).get('reseal_stable_min', 0),
+                    'open_count_30m': c.get('features', {}).get('open_count_30m', 0),
+                    'vol_ratio_5m': c.get('features', {}).get('vol_ratio_5m'),
+                    'is_limit_up': c.get('features', {}).get('is_limit_up', False),
+                    'near_limit_up': c.get('features', {}).get('near_limit_up', False),
+                    'liquidity_score': c.get('features', {}).get('liquidity_score')
+                },
+                'scores': {
+                    'total': c.get('total_score', 0),
+                    'market': c.get('market_score', 0),
+                    'stock': c.get('stock_score', 0),
+                    'quality': c.get('quality_score', 0),
+                    'risk_penalty': c.get('risk_penalty', 0)
+                }
+            })
+        
+        # 持仓数据
+        positions = app_state.db.get_positions()
+        risk_state = app_state.risk_engine.get_state()
+        portfolio_data = {
+            'positions': [
+                {'symbol': p['symbol'], 'qty': p['qty'], 'avg_cost': p['avg_cost']}
+                for p in positions
+            ],
+            'cash': risk_state.get('available_cash', 0),
+            'daily_pnl': risk_state.get('daily_pnl', 0),
+            'consecutive_losses': risk_state.get('consecutive_losses', 0)
+        }
+        
+        # 策略上下文
+        active_strategy = strategy_id or app_state.strategy_registry._active_strategy_id
+        qa_status = app_state.qa_checker.get_status()
+        strategy_context = {
+            'strategy_id': active_strategy,
+            'risk_profile': 'balanced',
+            'selected_themes': [],
+            'data_quality': {
+                'data_lag_sec': qa_status.get('data_lag_sec', 0),
+                'is_degraded': qa_status.get('is_degraded', False),
+                'missing_fields': qa_status.get('missing_fields', [])
+            }
+        }
+        
+        return {
+            'ts': now.isoformat(),
+            'market': market_data,
+            'themes': themes_data,
+            'candidates': candidates_data,
+            'portfolio': portfolio_data,
+            'strategy_context': strategy_context
+        }
+    
+    @app.post("/api/agent/apply_output")
+    async def apply_agent_output(body: dict):
+        """
+        接收 Agent 输出并应用
+        
+        用于接收 Coze/Dify 等智能体平台的结构化输出
+        
+        请求体格式:
+        {
+            "type": "MarketState|SignalExplain|ThemeHeat|RiskCoach|ReviewAnalyst",
+            "payload": { ... }
+        }
+        
+        返回: 处理结果
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        output_type = body.get('type')
+        payload = body.get('payload', {})
+        
+        if not output_type or not payload:
+            raise HTTPException(status_code=400, detail="缺少 type 或 payload")
+        
+        result = {'success': True, 'type': output_type}
+        
+        try:
+            if output_type == 'MarketState':
+                # 处理市场状态输出
+                app_state._market_features['agent_mode'] = payload.get('mode')
+                app_state._market_features['agent_risk_light'] = payload.get('risk_light')
+                app_state._market_features['agent_reasons'] = payload.get('reasons', [])
+                app_state._market_features['agent_suggested_risk'] = payload.get('suggested_risk', {})
+                result['message'] = '市场状态已更新'
+                
+                # WebSocket 推送
+                await ws_manager.broadcast({
+                    'type': 'agent_market_state',
+                    'data': payload
+                })
+                
+            elif output_type == 'SignalExplain':
+                # 处理信号解释输出 - 生成提示卡
+                symbol = payload.get('symbol')
+                action = payload.get('action', 'WATCH')
+                
+                if not symbol:
+                    raise HTTPException(status_code=400, detail="SignalExplain 缺少 symbol")
+                
+                # 创建快照
+                snapshot_hint = payload.get('snapshot_hint', {})
+                snapshot_id = None
+                if snapshot_hint.get('should_create_snapshot', True):
+                    snapshot_id = app_state.snapshot_manager.create_snapshot(
+                        market_features=app_state._market_features,
+                        candidates=app_state._candidates,
+                        trigger_reason=f"Agent SignalExplain: {symbol}"
+                    )
+                
+                # 创建提示卡
+                alert_data = {
+                    'symbol': symbol,
+                    'name': payload.get('name', ''),
+                    'strategy_id': payload.get('strategy_id', 'agent'),
+                    'action': action,
+                    'card_json': {
+                        'triggers': payload.get('triggers', []),
+                        'plan': payload.get('plan', {}),
+                        'risks': payload.get('risks', []),
+                        'one_liner': payload.get('one_liner', ''),
+                        'confidence': payload.get('confidence', 0),
+                        'warnings': payload.get('warnings', []),
+                        'total_score': payload.get('confidence', 0) * 100
+                    },
+                    'snapshot_id': snapshot_id,
+                    'source': 'agent'
+                }
+                
+                alert_id = app_state.alert_manager.create_alert(alert_data)
+                result['alert_id'] = alert_id
+                result['snapshot_id'] = snapshot_id
+                result['message'] = f'提示卡已创建: {symbol} -> {action}'
+                
+                # WebSocket 推送
+                await ws_manager.broadcast({
+                    'type': 'agent_signal',
+                    'data': {
+                        'alert_id': alert_id,
+                        'symbol': symbol,
+                        'action': action,
+                        'one_liner': payload.get('one_liner', '')
+                    }
+                })
+                
+            elif output_type == 'ThemeHeat':
+                # 处理题材热度输出
+                app_state._market_features['agent_themes'] = payload.get('top_themes', [])
+                app_state._market_features['agent_avoid_themes'] = payload.get('avoid_themes', [])
+                result['message'] = '题材热度已更新'
+                
+            elif output_type == 'RiskCoach':
+                # 处理风控建议输出
+                app_state._market_features['agent_risk_coach'] = {
+                    'allow_new_trades': payload.get('allow_new_trades', True),
+                    'max_total_position': payload.get('max_total_position', 0.6),
+                    'max_single_position': payload.get('max_single_position', 0.15),
+                    'stop_reason': payload.get('stop_reason'),
+                    'notes': payload.get('notes', [])
+                }
+                result['message'] = '风控建议已更新'
+                
+            elif output_type == 'ReviewAnalyst':
+                # 处理复盘分析输出
+                alert_id = payload.get('alert_id')
+                if alert_id:
+                    app_state.alert_manager.update_review(alert_id, {
+                        'agent_analysis': {
+                            'root_causes': payload.get('root_causes', []),
+                            'suggestions': payload.get('suggestions', []),
+                            'summary': payload.get('summary', '')
+                        }
+                    })
+                result['message'] = '复盘分析已保存'
+                
+            else:
+                raise HTTPException(status_code=400, detail=f"未知的输出类型: {output_type}")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"处理 Agent 输出失败: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        
+        return result
+    
+    @app.get("/api/agent/test")
+    async def test_agent_connection():
+        """
+        测试 Agent 连接
+        
+        用于验证 Agent 平台与 App 的连通性
+        """
+        return {
+            'status': 'ok',
+            'message': 'Agent API 可用',
+            'ts': datetime.now().isoformat(),
+            'endpoints': {
+                'input_bundle': 'GET /api/agent/input_bundle?symbol=xxx&strategy_id=xxx',
+                'apply_output': 'POST /api/agent/apply_output',
+                'test': 'GET /api/agent/test'
+            }
+        }
+    
     # ==================== WebSocket ====================
     
     @app.websocket("/ws/stream")

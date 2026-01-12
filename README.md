@@ -147,12 +147,81 @@ event_approx:
 ### WebSocket
 - `ws://localhost:8000/ws/stream` - 实时推送
 
+## 智能体/大模型对接（Agent Integration）
+
+本工具支持与 Coze、Dify 等智能体平台对接，通过大语言模型增强信号解释和决策能力。
+
+### Agent 功能
+
+| Agent 类型 | 功能说明 | 状态 |
+|-----------|---------|------|
+| **MarketState** | 市场状态解释，风险灯建议 | 可用 |
+| **SignalExplain** | 生成可执行提示卡（核心） | 可用 |
+| **ThemeHeat** | 题材热度分析 | 可选 |
+| **RiskCoach** | 风控建议增强 | 可选 |
+| **ReviewAnalyst** | 复盘归因分析 | 可选 |
+
+### Agent API 接口
+
+```bash
+# 测试连通性
+GET /api/agent/test
+
+# 获取输入数据包（给 Agent 用）
+GET /api/agent/input_bundle?symbol=300058&strategy_id=reseal_v1
+
+# 接收 Agent 输出（Agent 回写）
+POST /api/agent/apply_output
+Body: {"type": "SignalExplain", "payload": {...}}
+```
+
+### 快速对接 Coze/Dify
+
+1. **配置 HTTP 插件**：指向 `http://YOUR_IP:8000/api/agent/*`
+2. **配置 LLM 节点**：使用结构化 JSON 输出
+3. **配置工作流**：`获取输入 → LLM处理 → 回写输出`
+
+详细文档见：[通用Agent需求文档](./通用Agent需求文档_A股打板工具_Coze-Dify_v0.2.md)
+
+### 示例：本地测试 Agent 流程
+
+```bash
+# 1. 获取输入
+curl -s "http://localhost:8000/api/agent/input_bundle?symbol=300058" | jq .
+
+# 2. 模拟 Agent 输出
+curl -X POST http://localhost:8000/api/agent/apply_output \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "SignalExplain",
+    "payload": {
+      "agent": "SignalExplain",
+      "symbol": "300058",
+      "action": "WATCH",
+      "confidence": 0.75,
+      "triggers": [
+        {"name": "环境门槛", "status": "PASS", "detail": "黄灯，炸板率0.22<=0.30"}
+      ],
+      "plan": {
+        "max_single_position": 0.10,
+        "entry_note": "黄灯小仓位观察",
+        "exit_rules": ["开板30s不回封放弃", "回撤超0.20停止", "红灯停止新增"]
+      },
+      "one_liner": "回封质量达标，黄灯小仓位允许"
+    }
+  }'
+
+# 3. 查看生成的提示卡
+curl -s http://localhost:8000/api/alerts?limit=1 | jq .
+```
+
 ## 注意事项
 
-1. **数据源**: 默认使用 adata 库获取数据。如未安装 adata，将使用模拟数据。
+1. **数据源**: 使用 akshare（东方财富）获取实时数据。
 2. **数据延迟**: 当数据延迟超过阈值时，系统会自动禁止 ALLOW 输出。
 3. **非自动交易**: 本工具仅提供提示，不执行自动交易。
 4. **风控优先**: 红灯环境下禁止任何 ALLOW 输出。
+5. **Agent 降级**: 当数据异常时，Agent 也必须遵循降级规则。
 
 ## 许可证
 
