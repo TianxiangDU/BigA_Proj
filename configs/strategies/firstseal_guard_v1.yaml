@@ -1,0 +1,91 @@
+# 首封保守策略配置
+# 策略说明：在良好市场环境下追踪首次封板标的，要求严格
+
+strategy_id: "firstseal_guard_v1"
+name: "首封保守策略"
+type: "RULE"
+version: "1.0.0"
+enabled: true
+
+params:
+  # 市场门槛（更严格）
+  market_gate:
+    allow_risk_light: ["GREEN"]   # 仅绿灯允许
+    max_bomb_rate: 0.25           # 最大炸板率（更低）
+  
+  # 个股过滤（更严格）
+  stock_filter:
+    min_amount: 120000000         # 最小成交额（1.2亿）
+    min_liquidity_score: 0.70     # 最小流动性评分
+    max_open_cnt_30m: 1           # 30分钟内最大开板次数（仅允许1次）
+  
+  # 评分权重
+  scoring:
+    w_market: 0.40                # 市场得分权重（更高）
+    w_theme: 0.20                 # 题材得分权重
+    w_stock: 0.25                 # 个股得分权重
+    w_quality: 0.15               # 质量得分权重
+    yellow_score_factor: 0.60     # 黄灯系数折减（更严格）
+    
+    # 分项映射规则
+    market_score:
+      limit_up_count:
+        - [0, 25, 20]
+        - [25, 50, 65]
+        - [50, 999, 90]
+      bomb_rate:
+        - [0.35, 1.0, 5]
+        - [0.20, 0.35, 45]
+        - [0, 0.20, 85]
+      down_limit_count:
+        - [10, 999, 5]
+        - [3, 10, 45]
+        - [0, 3, 85]
+    
+    stock_score:
+      slope_5m:
+        - [0, 0.15, 10]
+        - [0.15, 0.35, 55]
+        - [0.35, 1.0, 85]
+      pullback_5m:
+        - [0.20, 1.0, 5]
+        - [0.08, 0.20, 45]
+        - [0, 0.08, 85]
+      vol_ratio_5m:
+        - [0, 1.5, 15]
+        - [1.5, 2.5, 55]
+        - [2.5, 100, 90]
+    
+    quality_score:
+      reseal_speed_sec:
+        - [0, 20, 90]
+        - [20, 45, 75]
+        - [45, 90, 35]
+        - [90, 9999, 5]
+      reseal_stable_min:
+        - [5, 999, 90]
+        - [2, 5, 65]
+        - [0, 2, 15]
+      open_count_30m:
+        - [0, 1, 90]              # 0次开板
+        - [1, 2, 50]              # 1次开板
+        - [2, 999, 10]            # 2次及以上
+  
+  # 触发条件（更严格）
+  trigger:
+    min_vol_ratio_5m: 1.8         # 最小5分钟量比
+    max_pullback_5m: 0.12         # 最大5分钟回撤
+    min_slope_5m: 0.20            # 最小5分钟斜率
+  
+  # 执行计划（更保守）
+  plan:
+    max_single_pos_green: 0.10    # 绿灯单票上限
+    max_single_pos_yellow: 0.05   # 黄灯单票上限（若放宽）
+    max_single_pos_red: 0.00      # 红灯不做
+    fail_window_sec: 20           # 失败判定窗口（秒）
+
+# 风控规则（更严格）
+risk:
+  stop_after_consecutive_losses: 2  # 连亏停手次数
+  daily_max_drawdown: 0.02          # 日内最大回撤
+  max_total_position: 0.40          # 总仓位上限

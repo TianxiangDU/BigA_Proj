@@ -1,0 +1,43 @@
+# A股打板提示工具 - 应用配置
+# 版本: v1.0.0
+
+runtime:
+  refresh_sec_trading: 5     # 交易时间刷新间隔（秒）- 9:15-15:00
+  refresh_sec_idle: 60       # 非交易时间刷新间隔（秒）
+  max_data_lag_sec: 15       # 最大数据延迟（秒），超过则禁止 ALLOW
+  timezone: "Asia/Shanghai"
+
+market:
+  pct_limit_up: 0.095      # 无涨停价时的涨停近似阈值 (9.5%)
+  pct_near_limit_up: 0.092 # 接近涨停阈值 (9.2%)
+  pct_limit_down: -0.095   # 跌停近似阈值 (-9.5%)
+
+event_approx:
+  limit_up_eps: 0.0005     # 判定"涨停"的容差 (0.05%)
+  near_limit_up_eps: 0.003 # 判定"接近涨停"的容差 (0.3%)
+  min_open_gap: 0.001      # 判定开板的价格脱离幅度 (0.1%)
+  window_m: 30             # 统计窗口分钟数
+
+trading:
+  pre_open_start: "09:15"   # 集合竞价开始（可交易）
+  pre_open_end: "09:25"     # 集合竞价结束
+  call_auction: "09:25"     # 集合竞价撮合（9:25-9:30不可撤单）
+  morning_start: "09:30"    # 上午连续竞价开始
+  morning_end: "11:30"      # 上午连续竞价结束
+  afternoon_start: "13:00"  # 下午连续竞价开始
+  afternoon_end: "15:00"    # 下午连续竞价结束
+  # 注：9:15-9:25 集合竞价期间可下单，9:25-9:30 只能下单不能撤单
+
+database:
+  path: "data/biga.db"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+websocket:
+  heartbeat_interval: 30   # WebSocket 心跳间隔（秒）
+
+notification:
+  enabled: false
+  type: "web_push"         # web_push / telegram / wechat

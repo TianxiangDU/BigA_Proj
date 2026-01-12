@@ -1,0 +1,467 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== 白色明亮主题 ==================== */
+:root {
+  --background: #ffffff;
+  --background-secondary: #f7f8fa;
+  --background-hover: #f0f1f3;
+  --foreground: #1a1a1a;
+  --muted: #666666;
+  --muted-light: #999999;
+  --border: #e5e5e5;
+  --border-light: #f0f0f0;
+  
+  /* 股票红绿色 */
+  --rise: #e74c3c;
+  --rise-bg: #fef2f2;
+  --fall: #27ae60;
+  --fall-bg: #f0fdf4;
+  
+  /* 信号灯 */
+  --light-green: #10b981;
+  --light-yellow: #f59e0b;
+  --light-red: #ef4444;
+  
+  /* 主色调 */
+  --primary: #e74c3c;
+  --primary-light: #fef2f2;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--background-secondary);
+  color: var(--foreground);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* ==================== 卡片 ==================== */
+.card {
+  background: var(--background);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ==================== 股票列表 ==================== */
+.stock-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.stock-row:hover {
+  background: var(--background-hover);
+}
+
+.stock-row .rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 12px;
+  background: var(--rise);
+  color: white;
+}
+
+.stock-row .rank.top3 {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+}
+
+.stock-row .rank.normal {
+  background: var(--background-secondary);
+  color: var(--muted);
+}
+
+.stock-row .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.stock-row .symbol {
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.stock-row .name {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stock-row .price-info {
+  text-align: right;
+}
+
+.stock-row .price {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stock-row .change {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stock-row .amount {
+  font-size: 11px;
+  color: var(--muted-light);
+}
+
+/* ==================== 涨跌色 ==================== */
+.text-rise { color: var(--rise) !important; }
+.text-fall { color: var(--fall) !important; }
+.text-muted { color: var(--muted); }
+.bg-rise { background: var(--rise-bg); }
+.bg-fall { background: var(--fall-bg); }
+
+/* ==================== 统计指标 ==================== */
+.stat-card {
+  background: var(--background);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ==================== 风险信号灯 ==================== */
+.risk-light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.risk-light.green {
+  background: var(--light-green);
+  box-shadow: 0 0 8px var(--light-green);
+}
+
+.risk-light.yellow {
+  background: var(--light-yellow);
+  box-shadow: 0 0 8px var(--light-yellow);
+}
+
+.risk-light.red {
+  background: var(--light-red);
+  box-shadow: 0 0 8px var(--light-red);
+}
+
+/* ==================== 标签 ==================== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tag-rise {
+  background: var(--rise-bg);
+  color: var(--rise);
+}
+
+.tag-fall {
+  background: var(--fall-bg);
+  color: var(--fall);
+}
+
+.tag-muted {
+  background: var(--background-secondary);
+  color: var(--muted);
+}
+
+/* ==================== 操作标签 ==================== */
+.action-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.action-badge.allow {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.action-badge.watch {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.action-badge.block {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ==================== 导航 ==================== */
+.nav-header {
+  background: var(--background);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-tab {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: 6px;
+  transition: all 0.15s;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.nav-tab:hover {
+  color: var(--foreground);
+  background: var(--background-secondary);
+}
+
+.nav-tab.active {
+  color: var(--rise);
+  background: var(--rise-bg);
+}
+
+/* ==================== 移动端底部导航 ==================== */
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--background);
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 0;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  z-index: 100;
+}
+
+@media (min-width: 768px) {
+  .mobile-nav { display: none; }
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 4px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.mobile-nav-item.active {
+  color: var(--rise);
+}
+
+/* ==================== 按钮 ==================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: var(--rise);
+  color: white;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--background-secondary);
+  color: var(--foreground);
+}
+
+.btn-secondary:hover {
+  background: var(--background-hover);
+}
+
+/* ==================== 表格 ==================== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 10px 8px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--background-secondary);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.data-table tr:hover {
+  background: var(--background-hover);
+}
+
+/* ==================== 滚动条 ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-light);
+}
+
+/* ==================== 工具类 ==================== */
+.text-foreground { color: var(--foreground); }
+.bg-background { background: var(--background); }
+.bg-background-secondary { background: var(--background-secondary); }
+
+/* ==================== 提示卡片 ==================== */
+.alert-card {
+  background: var(--background);
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 4px solid;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.alert-card-allow { border-left-color: var(--light-green); }
+.alert-card-watch { border-left-color: var(--light-yellow); }
+.alert-card-block { border-left-color: var(--light-red); }
+
+/* ==================== 加载动画 ==================== */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ==================== 指标卡片 ==================== */
+.metric {
+  text-align: center;
+  padding: 12px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+}
+
+.metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ==================== 筛选标签 ==================== */
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--background-secondary);
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+
+.filter-tag:hover {
+  background: var(--background-hover);
+  color: var(--foreground);
+}
+
+.filter-tag.active {
+  background: var(--rise-bg);
+  color: var(--rise);
+  border-color: var(--rise);
+}

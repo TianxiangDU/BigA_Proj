@@ -1,0 +1,93 @@
+# 回封主策略配置
+# 策略说明：追踪开板后快速回封的标的，适合活跃市场
+
+strategy_id: "reseal_v1"
+name: "回封主策略"
+type: "RULE"
+version: "1.0.0"
+enabled: true
+
+params:
+  # 市场门槛
+  market_gate:
+    max_bomb_rate: 0.30           # 最大炸板率
+    disallow_risk_light: ["RED"]  # 禁止的风险灯状态
+  
+  # 个股过滤
+  stock_filter:
+    min_amount: 80000000          # 最小成交额（8000万）
+    min_liquidity_score: 0.60     # 最小流动性评分
+    max_open_cnt_30m: 3           # 30分钟内最大开板次数
+  
+  # 评分权重
+  scoring:
+    w_market: 0.35                # 市场得分权重
+    w_theme: 0.25                 # 题材得分权重
+    w_stock: 0.25                 # 个股得分权重
+    w_quality: 0.15               # 质量得分权重
+    yellow_score_factor: 0.75     # 黄灯系数折减
+    
+    # 分项映射规则
+    market_score:
+      limit_up_count:
+        - [0, 20, 20]             # [min, max, score]
+        - [20, 40, 60]
+        - [40, 999, 85]
+      bomb_rate:
+        - [0.40, 1.0, 10]
+        - [0.25, 0.40, 50]
+        - [0, 0.25, 80]
+      down_limit_count:
+        - [15, 999, 10]
+        - [5, 15, 50]
+        - [0, 5, 80]
+    
+    stock_score:
+      slope_5m:
+        - [0, 0.10, 10]
+        - [0.10, 0.30, 50]
+        - [0.30, 1.0, 80]
+      pullback_5m:
+        - [0.25, 1.0, 10]
+        - [0.12, 0.25, 50]
+        - [0, 0.12, 80]
+      vol_ratio_5m:
+        - [0, 1.2, 20]
+        - [1.2, 2.0, 60]
+        - [2.0, 100, 85]
+    
+    quality_score:
+      reseal_speed_sec:
+        - [0, 30, 85]
+        - [30, 60, 70]
+        - [60, 120, 40]
+        - [120, 9999, 10]
+      reseal_stable_min:
+        - [3, 999, 85]
+        - [1, 3, 60]
+        - [0, 1, 20]
+      open_count_30m:
+        - [0, 1, 85]              # 0次开板
+        - [1, 2, 70]              # 1次开板
+        - [2, 3, 50]              # 2次开板
+        - [3, 999, 20]            # 3次及以上
+  
+  # 触发条件
+  trigger:
+    reseal_window_sec: 60         # 回封窗口（秒）
+    min_stable_min: 1             # 最小稳定分钟数
+    min_slope_5m: 0.25            # 最小5分钟斜率
+    max_pullback_5m: 0.18         # 最大5分钟回撤
+  
+  # 执行计划
+  plan:
+    max_single_pos_green: 0.15    # 绿灯单票上限
+    max_single_pos_yellow: 0.10   # 黄灯单票上限
+    max_single_pos_red: 0.00      # 红灯单票上限
+    fail_window_sec: 30           # 失败判定窗口（秒）
+
+# 风控规则
+risk:
+  stop_after_consecutive_losses: 3  # 连亏停手次数
+  daily_max_drawdown: 0.03          # 日内最大回撤
+  max_total_position: 0.60          # 总仓位上限
