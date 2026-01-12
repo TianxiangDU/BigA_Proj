@@ -43,6 +43,17 @@ const STOCK_TYPE_OPTIONS = [
   { value: 'st', label: 'ST股' },
 ]
 
+// 排序选项
+const SORT_OPTIONS = [
+  { value: 'pct_change', label: '涨幅', desc: true },
+  { value: 'amount', label: '成交额', desc: true },
+  { value: 'close', label: '现价', desc: true },
+  { value: 'symbol', label: '代码', desc: false },
+  { value: 'name', label: '名称', desc: false },
+]
+
+type SortKey = 'pct_change' | 'amount' | 'close' | 'symbol' | 'name'
+
 type TabType = 'dashboard' | 'pool' | 'alerts' | 'portfolio'
 
 // 筛选配置类型
@@ -77,13 +88,20 @@ export default function HomePage() {
       const dashboardData = await api.getDashboard()
       setDashboard(dashboardData)
       setRiskState(dashboardData.risk_state)
-      setLastUpdate(new Date())
       setLoading(false)
       
-      // 更新刷新间隔
+      // 使用后端返回的实际数据获取时间
       if (dashboardData.refresh_config) {
+        const fetchTime = dashboardData.refresh_config.last_fetch_time
+        if (fetchTime) {
+          setLastUpdate(new Date(fetchTime))
+        } else {
+          setLastUpdate(new Date())
+        }
         setRefreshSec(dashboardData.refresh_config.refresh_sec || 5)
         setCountdown(dashboardData.refresh_config.refresh_sec || 5)
+      } else {
+        setLastUpdate(new Date())
       }
       
       Promise.all([
@@ -225,6 +243,8 @@ export default function HomePage() {
               refreshSec={refreshSec} 
               lastUpdate={lastUpdate}
               isTrading={dashboard?.refresh_config?.is_trading}
+              fetchDuration={dashboard?.refresh_config?.last_fetch_duration_ms}
+              fetchCount={dashboard?.refresh_config?.fetch_count}
             />
             <button 
               onClick={() => setShowFilter(!showFilter)}
@@ -360,29 +380,50 @@ function FilterPanel({ config, onChange, onClose }: {
 
 // ==================== 组件 ====================
 
-function RefreshStatus({ countdown, refreshSec, lastUpdate, isTrading }: {
+function RefreshStatus({ countdown, refreshSec, lastUpdate, isTrading, fetchDuration, fetchCount }: {
   countdown: number
   refreshSec: number
   lastUpdate: Date | null
   isTrading: boolean
+  fetchDuration?: number
+  fetchCount?: number
 }) {
   const formatLastUpdate = (date: Date | null) => {
     if (!date) return '--:--:--'
     return date.toLocaleTimeString('zh-CN', { hour12: false })
   }
   
+  // 计算数据新鲜度（秒）
+  const dataAge = lastUpdate ? Math.floor((Date.now() - lastUpdate.getTime()) / 1000) : 0
+  const isStale = dataAge > 30  // 超过30秒算陈旧
+  
   return (
     <div className="hidden sm:flex items-center gap-2 text-xs">
-      <div className="flex items-center gap-1 text-muted">
-        <span>更新:</span>
+      <div className={`flex items-center gap-1 ${isStale ? 'text-yellow-600' : 'text-muted'}`}>
+        <span>数据:</span>
         <span className="font-mono">{formatLastUpdate(lastUpdate)}</span>
+        {dataAge > 0 && (
+          <span className={`${isStale ? 'text-yellow-600 font-medium' : 'text-muted'}`}>
+            ({dataAge}s前)
+          </span>
+        )}
       </div>
+      {fetchDuration !== undefined && (
+        <span className="text-muted">
+          耗时{fetchDuration}ms
+        </span>
+      )}
       <div className={`flex items-center gap-1 px-2 py-1 rounded ${
         isTrading ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
       }`}>
         <span>{countdown}s</span>
         <span className="text-[10px]">/ {refreshSec}s</span>
       </div>
+      {fetchCount !== undefined && fetchCount > 0 && (
+        <span className="text-muted text-[10px]">
+          #{fetchCount}
+        </span>
+      )}
     </div>
   )
 }
@@ -531,8 +572,42 @@ function StockListCard({ title, icon, stocks, totalCount, expanded, onToggle, co
   onToggle: () => void
   colorType: 'rise' | 'fall'
 }) {
-  const displayStocks = expanded ? stocks : stocks.slice(0, 10)
+  const [sortKey, setSortKey] = useState<SortKey>('pct_change')
+  const [sortDesc, setSortDesc] = useState(true)
+  
+  // 排序后的股票列表
+  const sortedStocks = useMemo(() => {
+    const sorted = [...stocks].sort((a, b) => {
+      let aVal = a[sortKey]
+      let bVal = b[sortKey]
+      
+      // 处理字符串排序
+      if (sortKey === 'symbol' || sortKey === 'name') {
+        aVal = aVal || ''
+        bVal = bVal || ''
+        return sortDesc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal)
+      }
+      
+      // 数值排序
+      aVal = aVal || 0
+      bVal = bVal || 0
+      return sortDesc ? bVal - aVal : aVal - bVal
+    })
+    return sorted
+  }, [stocks, sortKey, sortDesc])
+  
+  const displayStocks = expanded ? sortedStocks : sortedStocks.slice(0, 10)
   const changeColor = colorType === 'rise' ? 'text-rise' : 'text-fall'
+  
+  const handleSortChange = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDesc(!sortDesc)
+    } else {
+      setSortKey(key)
+      const opt = SORT_OPTIONS.find(o => o.value === key)
+      setSortDesc(opt?.desc ?? true)
+    }
+  }
   
   return (
     <div className="card">
@@ -554,6 +629,29 @@ function StockListCard({ title, icon, stocks, totalCount, expanded, onToggle, co
           )}
         </div>
       </div>
+      
+      {/* 排序选项 */}
+      {stocks.length > 0 && (
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-100 text-xs">
+          <span className="text-muted mr-1">排序:</span>
+          {SORT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={(e) => { e.stopPropagation(); handleSortChange(opt.value as SortKey) }}
+              className={`px-2 py-1 rounded transition-colors ${
+                sortKey === opt.value 
+                  ? 'bg-primary/10 text-primary font-medium' 
+                  : 'text-muted hover:bg-gray-100'
+              }`}
+            >
+              {opt.label}
+              {sortKey === opt.value && (
+                <span className="ml-0.5">{sortDesc ? '↓' : '↑'}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       
       {stocks.length > 0 ? (
         <div className={`stock-list ${expanded ? 'max-h-[500px]' : 'max-h-[300px]'} overflow-y-auto`}>

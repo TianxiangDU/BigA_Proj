@@ -112,6 +112,11 @@ class AppState:
         self._candidates: List[Dict] = []
         self._prev_candidates: List[Dict] = []
         self._prev_risk_light: str = 'GREEN'
+        
+        # 数据获取时间记录
+        self._last_fetch_time: Optional[datetime] = None  # 最后一次获取数据的时间
+        self._last_fetch_duration_ms: int = 0  # 获取数据耗时（毫秒）
+        self._fetch_count: int = 0  # 获取次数
 
 
 app_state: Optional[AppState] = None
@@ -132,15 +137,29 @@ async def refresh_data():
         session = app_state.calendar.get_trading_session()
         logger.debug(f"开始刷新数据... 当前时段: {session}")
         
+        # 记录开始时间
+        fetch_start = datetime.now()
+        
         # 获取全市场实时行情
         quotes_df = app_state.data_provider.get_realtime_quote_batch()
+        
+        # 记录获取数据耗时
+        fetch_end = datetime.now()
+        fetch_duration_ms = int((fetch_end - fetch_start).total_seconds() * 1000)
+        
+        # 保存获取时间信息
+        app_state._last_fetch_time = fetch_end
+        app_state._last_fetch_duration_ms = fetch_duration_ms
+        app_state._fetch_count += 1
+        
+        logger.info(f"数据获取完成: 耗时 {fetch_duration_ms}ms, 股票数 {len(quotes_df)}, 第 {app_state._fetch_count} 次")
         
         if quotes_df.empty:
             logger.warning("获取行情数据为空")
             return
         
         # 更新数据质量检查
-        app_state.qa_checker.update_data_timestamp(datetime.now())
+        app_state.qa_checker.update_data_timestamp(fetch_end)
         
         # 计算市场特征
         app_state._market_features = app_state.feature_engine.calculate_market_features(quotes_df)
@@ -386,8 +405,12 @@ def create_app() -> FastAPI:
             'refresh_config': {
                 'refresh_sec': current_refresh_sec,
                 'is_trading': is_trading,
-                'last_update': datetime.now().isoformat(),
-                'data_source': 'akshare (东方财富)'
+                'data_source': 'akshare (东方财富)',
+                # 数据获取时间信息
+                'last_fetch_time': app_state._last_fetch_time.isoformat() if app_state._last_fetch_time else None,
+                'last_fetch_duration_ms': app_state._last_fetch_duration_ms,
+                'fetch_count': app_state._fetch_count,
+                'response_time': datetime.now().isoformat()
             }
         }
     
