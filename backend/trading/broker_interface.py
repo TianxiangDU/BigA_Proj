@@ -326,7 +326,7 @@ class EasyTraderBroker(BrokerInterface):
 
 
 # 工厂方法
-def create_broker(broker_type: str) -> BrokerInterface:
+def create_broker(broker_type: str, **kwargs) -> BrokerInterface:
     """
     创建券商适配器
     
@@ -334,13 +334,20 @@ def create_broker(broker_type: str) -> BrokerInterface:
         broker_type: 券商类型
             - dummy: 虚拟券商（测试用）
             - easytrader: EasyTrader（同花顺等）
-            - qmt: QMT（待实现）
+            - huatai: 华泰证券（同花顺/QMT）
+            - huatai_qmt: 华泰证券 QMT
             - custom: 自定义（待实现）
     """
     if broker_type == 'dummy':
         return DummyBroker()
     elif broker_type == 'easytrader':
         return EasyTraderBroker()
+    elif broker_type == 'huatai':
+        from .huatai_broker import HuataiBroker
+        return HuataiBroker(mode='easytrader')
+    elif broker_type == 'huatai_qmt':
+        from .huatai_broker import HuataiBroker
+        return HuataiBroker(mode='qmt')
     else:
         logger.warning(f"未知的券商类型: {broker_type}，使用虚拟券商")
         return DummyBroker()

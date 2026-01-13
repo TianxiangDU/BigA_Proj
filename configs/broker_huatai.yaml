@@ -1,0 +1,42 @@
+# 华泰证券配置文件
+# 使用同花顺客户端方式
+
+broker:
+  # 券商类型
+  type: easytrader
+  
+  # easytrader 配置
+  easytrader:
+    # 客户端类型: ths (同花顺) / universal (通用同花顺)
+    broker: universal
+    
+    # 同花顺客户端路径 (Windows)
+    # exe_path: "C:\\同花顺软件\\xiadan\\xiadan.exe"
+    
+    # 华泰证券同花顺版下载地址:
+    # https://www.htsc.com.cn/browser/download.html
+    
+  # 账户配置（建议使用环境变量，不要明文存储密码）
+  # account:
+  #   user: "your_account"
+  #   password: "your_password"  # 交易密码
+  
+  # 风控设置
+  risk:
+    # 单笔最大金额
+    max_single_amount: 50000
+    # 单日最大交易次数
+    max_daily_trades: 20
+    # 是否需要二次确认
+    confirm_before_trade: true
+
+# 使用说明:
+# 1. 下载并安装华泰证券同花顺版客户端
+# 2. 登录客户端，保持运行状态
+# 3. 在 App 中切换到实盘模式
+# 4. 通过 API 或前端执行交易
+
+# 环境变量配置（推荐）:
+# export HUATAI_ACCOUNT="your_account"
+# export HUATAI_PASSWORD="your_password"
+# export HUATAI_EXE_PATH="C:\\同花顺软件\\xiadan\\xiadan.exe"
