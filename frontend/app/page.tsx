@@ -457,8 +457,110 @@ function RiskLightBadge({ light }: { light: string }) {
   )
 }
 
+// 增强版风险灯显示（带hover提示）
+function RiskLightDisplay({ light, bombRate, limitUpCount, limitDownCount }: {
+  light: string
+  bombRate?: number
+  limitUpCount?: number
+  limitDownCount?: number
+}) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  
+  const config: Record<string, { 
+    bg: string; 
+    border: string; 
+    text: string; 
+    glow: string;
+    label: string;
+    description: string 
+  }> = {
+    GREEN: { 
+      bg: 'bg-green-500', 
+      border: 'border-green-400',
+      text: 'text-green-700',
+      glow: 'shadow-green-500/50',
+      label: '绿灯',
+      description: '市场环境良好，可正常操作'
+    },
+    YELLOW: { 
+      bg: 'bg-yellow-400', 
+      border: 'border-yellow-300',
+      text: 'text-yellow-700',
+      glow: 'shadow-yellow-400/50',
+      label: '黄灯',
+      description: '市场有分歧，需谨慎操作'
+    },
+    RED: { 
+      bg: 'bg-red-500', 
+      border: 'border-red-400',
+      text: 'text-red-700',
+      glow: 'shadow-red-500/50',
+      label: '红灯',
+      description: '市场环境恶劣，禁止新开仓'
+    },
+  }
+  
+  const c = config[light] || config.GREEN
+  
+  // 生成判断原因
+  const reasons: string[] = []
+  if (limitUpCount !== undefined) {
+    if (limitUpCount > 100) reasons.push(`涨停${limitUpCount}家(强)`)
+    else if (limitUpCount > 50) reasons.push(`涨停${limitUpCount}家(中)`)
+    else reasons.push(`涨停${limitUpCount}家(弱)`)
+  }
+  if (bombRate !== undefined) {
+    if (bombRate > 0.4) reasons.push(`炸板率${(bombRate*100).toFixed(0)}%(高)`)
+    else if (bombRate > 0.25) reasons.push(`炸板率${(bombRate*100).toFixed(0)}%(中)`)
+    else reasons.push(`炸板率${(bombRate*100).toFixed(0)}%(低)`)
+  }
+  if (limitDownCount !== undefined && limitDownCount > 20) {
+    reasons.push(`跌停${limitDownCount}家(警告)`)
+  }
+  
+  return (
+    <div 
+      className="relative"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <div className={`
+        flex items-center gap-2 px-3 py-1.5 rounded-full cursor-help
+        ${c.border} border-2 ${c.text} font-semibold
+        transition-all duration-300
+      `}>
+        <div className={`
+          w-4 h-4 rounded-full ${c.bg} 
+          shadow-lg ${c.glow}
+          animate-pulse
+        `} />
+        <span className="text-sm">{c.label}</span>
+      </div>
+      
+      {/* Tooltip */}
+      {showTooltip && (
+        <div className="absolute top-full right-0 mt-2 z-50 w-64 p-3 bg-white rounded-lg shadow-xl border text-sm">
+          <div className={`font-bold mb-2 ${c.text}`}>{c.label} - {c.description}</div>
+          <div className="space-y-1 text-muted">
+            <div className="font-medium text-foreground">判断依据：</div>
+            {reasons.map((r, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                {r}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DashboardView({ dashboard, candidates, filterStocks }: any) {
   const market = dashboard?.market || {}
+  const summary = dashboard?.summary || {}
+  const dataQuality = dashboard?.data_quality || {}
+  const refreshConfig = dashboard?.refresh_config || {}
   const [expandedSection, setExpandedSection] = useState<string | null>('limit_up')
   
   // 应用筛选
@@ -470,30 +572,91 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
     setExpandedSection(expandedSection === section ? null : section)
   }
 
+  // 计算市场整体情绪
+  const getMarketMood = () => {
+    const limitUp = (market.limit_up_stocks || []).length
+    const limitDown = (market.limit_down_stocks || []).length
+    const bombRate = market.bomb_rate || 0
+    
+    if (limitUp > 100 && bombRate < 0.2) return { text: '强势', color: 'text-rise', bg: 'bg-rise/10' }
+    if (limitUp > 50 && bombRate < 0.3) return { text: '偏强', color: 'text-orange-500', bg: 'bg-orange-50' }
+    if (limitDown > 50 || bombRate > 0.4) return { text: '弱势', color: 'text-fall', bg: 'bg-fall/10' }
+    return { text: '震荡', color: 'text-yellow-600', bg: 'bg-yellow-50' }
+  }
+  
+  const mood = getMarketMood()
+
   return (
     <div className="space-y-4">
-      {/* 核心统计 */}
+      {/* 市场概览看板 */}
+      <div className="card bg-gradient-to-r from-slate-50 to-white">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="card-title text-lg">📊 市场概览</h2>
+          <RiskLightDisplay 
+            light={summary.risk_light || market.risk_light || 'GREEN'} 
+            bombRate={market.bomb_rate}
+            limitUpCount={(market.limit_up_stocks || []).length}
+            limitDownCount={(market.limit_down_stocks || []).length}
+          />
+        </div>
+        
+        {/* 核心指标行 */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-rise">{(market.limit_up_stocks || []).length}</div>
+            <div className="text-xs text-muted">涨停家数</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-fall">{(market.limit_down_stocks || []).length}</div>
+            <div className="text-xs text-muted">跌停家数</div>
+          </div>
+          <div className="text-center">
+            <div className={`text-2xl font-bold ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : 'text-foreground'}`}>
+              {formatPercent(market.bomb_rate || 0)}
+            </div>
+            <div className="text-xs text-muted">炸板率</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-500">{(market.near_limit_up_stocks || []).length}</div>
+            <div className="text-xs text-muted">冲板中</div>
+          </div>
+          <div className="text-center">
+            <div className={`text-2xl font-bold ${mood.color}`}>{mood.text}</div>
+            <div className="text-xs text-muted">市场情绪</div>
+          </div>
+        </div>
+        
+        {/* 数据来源和时间 */}
+        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-3">
+          <span>数据源: {refreshConfig.data_source || 'akshare'}</span>
+          <span>
+            {refreshConfig.last_fetch_time 
+              ? `更新于 ${new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')}`
+              : '--'}
+            {refreshConfig.last_fetch_duration_ms && (
+              <span className="ml-2 text-[10px]">耗时{refreshConfig.last_fetch_duration_ms}ms</span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* 筛选后的统计 */}
       <div className="grid grid-cols-4 gap-3">
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('limit_up')}>
           <div className="stat-value text-rise">{limitUpStocks.length}</div>
-          <div className="stat-label">涨停</div>
-          <div className="text-xs text-muted mt-1">全市场 {(market.limit_up_stocks || []).length}</div>
+          <div className="stat-label">涨停(筛选)</div>
         </div>
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('limit_down')}>
           <div className="stat-value text-fall">{limitDownStocks.length}</div>
-          <div className="stat-label">跌停</div>
-          <div className="text-xs text-muted mt-1">全市场 {(market.limit_down_stocks || []).length}</div>
+          <div className="stat-label">跌停(筛选)</div>
         </div>
         <div className="stat-card">
-          <div className={`stat-value ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : ''}`}>
-            {formatPercent(market.bomb_rate || 0)}
-          </div>
-          <div className="stat-label">炸板率</div>
+          <div className="stat-value">{market.max_streak || '-'}</div>
+          <div className="stat-label">连板高度</div>
         </div>
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('near')}>
           <div className="stat-value text-orange-500">{nearLimitUpStocks.length}</div>
-          <div className="stat-label">冲板中</div>
-          <div className="text-xs text-muted mt-1">全市场 {(market.near_limit_up_stocks || []).length}</div>
+          <div className="stat-label">冲板(筛选)</div>
         </div>
       </div>
 
@@ -572,7 +735,7 @@ function StockListCard({ title, icon, stocks, totalCount, expanded, onToggle, co
   onToggle: () => void
   colorType: 'rise' | 'fall'
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>('pct_change')
+  const [sortKey, setSortKey] = useState<SortKey>('amount')  // 默认按成交额排序
   const [sortDesc, setSortDesc] = useState(true)
   
   // 排序后的股票列表

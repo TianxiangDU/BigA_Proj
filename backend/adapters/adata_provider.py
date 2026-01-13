@@ -53,49 +53,68 @@ class AdataProvider:
         
         df = pd.DataFrame()
         
-        # 使用 akshare 获取全市场数据
+        # 使用 akshare 获取全市场数据（带重试）
         if AKSHARE_AVAILABLE:
-            try:
-                logger.info("正在获取全市场行情 (akshare)...")
-                raw_df = ak.stock_zh_a_spot_em()
-                
-                if raw_df is not None and not raw_df.empty:
-                    # 转换列名
-                    df = pd.DataFrame({
-                        'symbol': raw_df['代码'],
-                        'name': raw_df['名称'],
-                        'close': pd.to_numeric(raw_df['最新价'], errors='coerce'),
-                        'open': pd.to_numeric(raw_df['今开'], errors='coerce'),
-                        'high': pd.to_numeric(raw_df['最高'], errors='coerce'),
-                        'low': pd.to_numeric(raw_df['最低'], errors='coerce'),
-                        'prev_close': pd.to_numeric(raw_df['昨收'], errors='coerce'),
-                        'pct_change': pd.to_numeric(raw_df['涨跌幅'], errors='coerce'),
-                        'volume': pd.to_numeric(raw_df['成交量'], errors='coerce'),
-                        'amount': pd.to_numeric(raw_df['成交额'], errors='coerce'),
-                        'turnover': pd.to_numeric(raw_df['换手率'], errors='coerce'),
-                        'amplitude': pd.to_numeric(raw_df['振幅'], errors='coerce'),
-                    })
+            max_retries = 3
+            retry_delay = 2  # 秒
+            
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"正在获取全市场行情 (akshare)... 尝试 {attempt + 1}/{max_retries}")
+                    raw_df = ak.stock_zh_a_spot_em()
                     
-                    # 过滤有效股票（主板、创业板、科创板）
-                    df = df[df['symbol'].str.match(r'^(00|30|60|68)\d{4}$', na=False)]
-                    
-                    # 过滤 ST 和停牌
-                    df = df[~df['name'].str.contains('ST|\\*|退', na=False, regex=True)]
-                    df = df[df['close'] > 0]  # 过滤停牌
-                    
-                    # 计算涨停价、跌停价
-                    df['limit_pct'] = df['symbol'].apply(
-                        lambda x: 0.2 if x.startswith('30') or x.startswith('68') else 0.1
-                    )
-                    df['limit_up_price'] = (df['prev_close'] * (1 + df['limit_pct'])).round(2)
-                    df['limit_down_price'] = (df['prev_close'] * (1 - df['limit_pct'])).round(2)
-                    
-                    logger.info(f"获取全市场行情成功，共 {len(df)} 只股票")
-                    
-            except Exception as e:
-                logger.error(f"akshare 获取失败: {e}")
-                import traceback
-                logger.debug(traceback.format_exc())
+                    if raw_df is not None and not raw_df.empty:
+                        # 转换列名
+                        df = pd.DataFrame({
+                            'symbol': raw_df['代码'],
+                            'name': raw_df['名称'],
+                            'close': pd.to_numeric(raw_df['最新价'], errors='coerce'),
+                            'open': pd.to_numeric(raw_df['今开'], errors='coerce'),
+                            'high': pd.to_numeric(raw_df['最高'], errors='coerce'),
+                            'low': pd.to_numeric(raw_df['最低'], errors='coerce'),
+                            'prev_close': pd.to_numeric(raw_df['昨收'], errors='coerce'),
+                            'pct_change': pd.to_numeric(raw_df['涨跌幅'], errors='coerce'),
+                            'volume': pd.to_numeric(raw_df['成交量'], errors='coerce'),
+                            'amount': pd.to_numeric(raw_df['成交额'], errors='coerce'),
+                            'turnover': pd.to_numeric(raw_df['换手率'], errors='coerce'),
+                            'amplitude': pd.to_numeric(raw_df['振幅'], errors='coerce'),
+                        })
+                        
+                        # 过滤有效股票（主板、创业板、科创板、北交所）
+                        df = df[df['symbol'].str.match(r'^(00|30|60|68|8|4)\d+$', na=False)]
+                        
+                        # 过滤 ST 和停牌
+                        df = df[~df['name'].str.contains('ST|\\*|退', na=False, regex=True)]
+                        df = df[df['close'] > 0]  # 过滤停牌
+                        
+                        # 计算涨停价、跌停价
+                        def get_limit_pct(symbol):
+                            if symbol.startswith('8') or symbol.startswith('4'):
+                                return 0.3  # 北交所
+                            if symbol.startswith('30') or symbol.startswith('68'):
+                                return 0.2  # 创业板/科创板
+                            return 0.1  # 主板
+                        
+                        df['limit_pct'] = df['symbol'].apply(get_limit_pct)
+                        df['limit_up_price'] = (df['prev_close'] * (1 + df['limit_pct'])).round(2)
+                        df['limit_down_price'] = (df['prev_close'] * (1 - df['limit_pct'])).round(2)
+                        
+                        logger.info(f"获取全市场行情成功，共 {len(df)} 只股票")
+                        break  # 成功，退出重试循环
+                        
+                except Exception as e:
+                    logger.warning(f"akshare 获取失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(f"akshare 获取失败，已重试 {max_retries} 次")
+                        # 如果有缓存数据且不太旧（5分钟内），使用缓存
+                        if self._quote_cache is not None and self._quote_cache_time:
+                            cache_age = (datetime.now() - self._quote_cache_time).total_seconds()
+                            if cache_age < 300:
+                                logger.info(f"使用缓存数据 ({int(cache_age)}秒前)")
+                                df = self._quote_cache
         
         # 缓存结果
         if not df.empty:
