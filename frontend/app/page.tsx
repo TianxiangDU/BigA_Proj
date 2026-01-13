@@ -35,6 +35,7 @@ import {
   PlayCircle,
   PauseCircle,
   Settings2,
+  Clock,
 } from 'lucide-react'
 
 // 筛选选项
@@ -228,45 +229,25 @@ export default function HomePage() {
     )
   }
 
-  // 风险灯颜色
-  const riskLight = dashboard?.summary?.risk_light || dashboard?.market?.risk_light || 'GREEN'
-  const riskLightColor = riskLight === 'GREEN' ? 'bg-green-500' : riskLight === 'YELLOW' ? 'bg-yellow-400' : 'bg-red-500'
-  
   return (
     <div className="min-h-screen bg-background-secondary pb-20 md:pb-4">
-      {/* 顶部导航 - 简洁设计 */}
+      {/* 顶部导航 */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
         <div className="max-w-6xl mx-auto">
           {/* 主导航行 */}
           <div className="px-4 h-14 flex items-center justify-between">
-            {/* 左侧：Logo + 状态指示 */}
+            {/* 左侧：Logo + 情绪指示器 */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full ${riskLightColor} animate-pulse`} />
-                <h1 className="text-lg font-bold text-gray-800">
-                  <span className="hidden sm:inline">打板提示</span>
-                  <span className="sm:hidden">打板</span>
-                </h1>
-              </div>
+              <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Flame className="w-5 h-5 text-rise" />
+                <span className="hidden sm:inline">打板提示</span>
+              </h1>
               
-              {/* 桌面端状态 */}
-              <div className="hidden md:flex items-center gap-2 text-xs text-gray-500">
-                <span className={`px-2 py-0.5 rounded ${
-                  dashboard?.refresh_config?.is_trading 
-                    ? 'bg-green-50 text-green-600' 
-                    : 'bg-gray-100 text-gray-500'
-                }`}>
-                  {dashboard?.trading_session === 'MORNING' ? '上午盘' :
-                   dashboard?.trading_session === 'AFTERNOON' ? '下午盘' :
-                   dashboard?.trading_session === 'LUNCH' ? '午休' :
-                   dashboard?.trading_session === 'PRE_OPEN' ? '集合竞价' : '已收盘'}
-                </span>
-                {lastUpdate && (
-                  <span className="text-gray-400">
-                    {lastUpdate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
+              {/* 情绪指示器（带hover详情） */}
+              <SentimentIndicator 
+                sentiment={sentiment}
+                dashboard={dashboard}
+              />
             </div>
             
             {/* 桌面端导航标签 */}
@@ -293,12 +274,16 @@ export default function HomePage() {
               ))}
             </nav>
             
-            {/* 右侧操作按钮 */}
-            <div className="flex items-center gap-1">
-              {/* 刷新倒计时 - 简化 */}
-              <div className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-2">
-                <span className="tabular-nums">{countdown}s</span>
-              </div>
+            {/* 右侧：数据时间 + 操作按钮 */}
+            <div className="flex items-center gap-2">
+              {/* 数据获取时间 */}
+              <DataTimestamp 
+                lastUpdate={lastUpdate}
+                fetchDuration={dashboard?.refresh_config?.last_fetch_duration_ms}
+                countdown={countdown}
+                refreshSec={refreshSec}
+                isTrading={dashboard?.refresh_config?.is_trading}
+              />
               
               {/* 筛选按钮 */}
               <button 
@@ -350,7 +335,6 @@ export default function HomePage() {
         {activeTab === 'trading' && (
           <TradingView 
             tradingStatus={tradingStatus} 
-            sentiment={sentiment}
             onRefresh={loadData}
           />
         )}
@@ -527,11 +511,184 @@ function SessionBadge({ session }: { session: string }) {
   )
 }
 
-function RiskLightBadge({ light }: { light: string }) {
+// ==================== 情绪指示器（带hover详情）====================
+function SentimentIndicator({ sentiment, dashboard }: { sentiment: any; dashboard: any }) {
+  const [showDetails, setShowDetails] = useState(false)
+  
+  // 从情绪分析或市场数据获取风险灯
+  const riskLight = sentiment?.risk_light || dashboard?.summary?.risk_light || 'GREEN'
+  const score = sentiment?.sentiment_score || 50
+  const grade = sentiment?.sentiment_grade || 'C'
+  const gradeText = sentiment?.sentiment_text || '中性'
+  
+  // 风险灯配置
+  const lightConfig: Record<string, { bg: string; glow: string; label: string }> = {
+    GREEN: { bg: 'bg-green-500', glow: 'shadow-green-500/50', label: '绿灯' },
+    YELLOW: { bg: 'bg-yellow-400', glow: 'shadow-yellow-400/50', label: '黄灯' },
+    RED: { bg: 'bg-red-500', glow: 'shadow-red-500/50', label: '红灯' },
+  }
+  const lc = lightConfig[riskLight] || lightConfig.GREEN
+  
+  // 情绪分数颜色
+  const getScoreColor = (s: number) => {
+    if (s >= 70) return 'text-green-600'
+    if (s >= 50) return 'text-yellow-600'
+    if (s >= 30) return 'text-orange-500'
+    return 'text-red-500'
+  }
+  
+  // 判断原因列表
+  const getReasons = () => {
+    const reasons: string[] = []
+    
+    // 从情绪分析获取
+    if (sentiment?.agent_analysis_reasons?.length > 0) {
+      reasons.push(...sentiment.agent_analysis_reasons)
+    }
+    
+    // 基于市场数据补充
+    const market = dashboard?.market || {}
+    const limitUp = market.limit_up_count || 0
+    const limitDown = market.down_limit_count || 0
+    const bombRate = market.bomb_rate || 0
+    
+    if (limitUp > 100) reasons.push(`涨停${limitUp}家，市场热度高`)
+    else if (limitUp > 50) reasons.push(`涨停${limitUp}家，市场一般`)
+    else if (limitUp < 30) reasons.push(`涨停仅${limitUp}家，市场低迷`)
+    
+    if (bombRate > 0.4) reasons.push(`炸板率${(bombRate*100).toFixed(0)}%，风险较高`)
+    if (limitDown > 30) reasons.push(`跌停${limitDown}家，需警惕`)
+    
+    // 涨跌比
+    if (sentiment?.rise_fall_ratio) {
+      if (sentiment.rise_fall_ratio > 2) reasons.push(`涨跌比${sentiment.rise_fall_ratio.toFixed(1)}，多头占优`)
+      else if (sentiment.rise_fall_ratio < 0.5) reasons.push(`涨跌比${sentiment.rise_fall_ratio.toFixed(1)}，空头主导`)
+    }
+    
+    return reasons.slice(0, 5)  // 最多显示5条
+  }
+
   return (
-    <div className="flex items-center gap-1.5">
-      <div className={`risk-light ${getRiskLightClass(light)}`} />
-      <span className="text-sm font-medium hidden sm:inline">{getRiskLightText(light)}</span>
+    <div 
+      className="relative"
+      onMouseEnter={() => setShowDetails(true)}
+      onMouseLeave={() => setShowDetails(false)}
+    >
+      {/* 主显示区域 */}
+      <div className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+        {/* 风险灯 */}
+        <div className={`w-3 h-3 rounded-full ${lc.bg} shadow-lg ${lc.glow} animate-pulse`} />
+        
+        {/* 分数和等级 */}
+        <div className="hidden sm:flex items-center gap-1.5">
+          <span className={`font-bold ${getScoreColor(score)}`}>{score}</span>
+          <span className="text-xs text-gray-500">{grade}级</span>
+        </div>
+        
+        {/* 移动端简化显示 */}
+        <span className="sm:hidden text-xs font-medium text-gray-600">{lc.label}</span>
+      </div>
+      
+      {/* Hover详情面板 */}
+      {showDetails && (
+        <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 z-50">
+          {/* 头部：分数和等级 */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className={`w-4 h-4 rounded-full ${lc.bg}`} />
+              <span className="font-medium text-gray-800">{lc.label}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl font-bold ${getScoreColor(score)}`}>{score}</span>
+              <span className="text-sm text-gray-500">/ 100</span>
+            </div>
+          </div>
+          
+          {/* 情绪等级条 */}
+          <div className="mb-3">
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className={`h-full transition-all ${
+                  score >= 70 ? 'bg-green-500' : 
+                  score >= 50 ? 'bg-yellow-500' : 
+                  score >= 30 ? 'bg-orange-500' : 'bg-red-500'
+                }`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+              <span>极弱</span>
+              <span>中性</span>
+              <span>极强</span>
+            </div>
+          </div>
+          
+          {/* 等级说明 */}
+          <div className="text-sm text-gray-600 mb-3 py-2 px-3 bg-gray-50 rounded-lg">
+            <span className="font-medium">{grade}级 · {gradeText}</span>
+          </div>
+          
+          {/* 判断原因 */}
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-gray-500 mb-1">判断依据</div>
+            {getReasons().length > 0 ? (
+              getReasons().map((reason, i) => (
+                <div key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                  <span className="text-gray-400 mt-0.5">•</span>
+                  <span>{reason}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-gray-400">暂无详细数据</div>
+            )}
+          </div>
+          
+          {/* Agent分析提示 */}
+          {sentiment?.needs_agent_analysis && (
+            <div className="mt-3 p-2 bg-purple-50 rounded-lg text-xs text-purple-700 flex items-center gap-1.5">
+              <Brain className="w-3.5 h-3.5" />
+              <span>建议进行深度分析</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==================== 数据时间戳组件 ====================
+function DataTimestamp({ lastUpdate, fetchDuration, countdown, refreshSec, isTrading }: {
+  lastUpdate: Date | null
+  fetchDuration?: number
+  countdown: number
+  refreshSec: number
+  isTrading?: boolean
+}) {
+  const formatTime = (date: Date | null) => {
+    if (!date) return '--:--'
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+  
+  const dataAge = lastUpdate ? Math.floor((Date.now() - lastUpdate.getTime()) / 1000) : 0
+  const isStale = dataAge > 30
+  
+  return (
+    <div className="hidden sm:flex items-center gap-2 text-xs">
+      {/* 数据时间 */}
+      <div className={`flex items-center gap-1 ${isStale ? 'text-yellow-600' : 'text-gray-500'}`}>
+        <Clock className="w-3.5 h-3.5" />
+        <span className="font-mono">{formatTime(lastUpdate)}</span>
+        {fetchDuration && (
+          <span className="text-gray-400">({fetchDuration}ms)</span>
+        )}
+      </div>
+      
+      {/* 倒计时 */}
+      <div className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+        isTrading ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
+      }`}>
+        {countdown}s
+      </div>
     </div>
   )
 }
@@ -1165,9 +1322,8 @@ function PortfolioView({ riskState }: { riskState: any }) {
 
 // ==================== 交易视图 ====================
 
-function TradingView({ tradingStatus, sentiment, onRefresh }: { 
+function TradingView({ tradingStatus, onRefresh }: { 
   tradingStatus: any
-  sentiment: any 
   onRefresh: () => void
 }) {
   const [activeMode, setActiveMode] = useState(tradingStatus?.mode || 'paper')
@@ -1208,9 +1364,6 @@ function TradingView({ tradingStatus, sentiment, onRefresh }: {
   
   return (
     <div className="space-y-4">
-      {/* 情绪分析面板 */}
-      <SentimentCard sentiment={sentiment} />
-      
       {/* 交易模式切换 */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
