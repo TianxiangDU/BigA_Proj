@@ -592,16 +592,19 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
       <div className="card bg-gradient-to-r from-slate-50 to-white">
         <div className="flex items-center justify-between mb-3">
           <h2 className="card-title text-lg">📈 大盘行情</h2>
-          <RiskLightDisplay 
-            light={summary.risk_light || market.risk_light || 'GREEN'} 
-            bombRate={market.bomb_rate}
-            limitUpCount={(market.limit_up_stocks || []).length}
-            limitDownCount={(market.limit_down_stocks || []).length}
-          />
+          <div className="flex items-center gap-3">
+            <SessionBadge session={dashboard?.trading_session || 'CLOSED'} />
+            <RiskLightDisplay 
+              light={summary.risk_light || market.risk_light || 'GREEN'} 
+              bombRate={market.bomb_rate}
+              limitUpCount={(market.limit_up_stocks || []).length}
+              limitDownCount={(market.limit_down_stocks || []).length}
+            />
+          </div>
         </div>
         
         {/* 大盘指数 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {(market.indices || []).map((idx: any) => (
             <IndexCard key={idx.code} index={idx} />
           ))}
@@ -612,63 +615,56 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
           )}
         </div>
         
-        {/* 涨跌停统计 */}
-        <div className="grid grid-cols-5 gap-3 py-3 border-t border-gray-100">
-          <div className="text-center">
-            <div className="text-xl font-bold text-rise">{(market.limit_up_stocks || []).length}</div>
-            <div className="text-[10px] text-muted">涨停</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl font-bold text-fall">{(market.limit_down_stocks || []).length}</div>
-            <div className="text-[10px] text-muted">跌停</div>
-          </div>
-          <div className="text-center">
-            <div className={`text-xl font-bold ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : ''}`}>
-              {formatPercent(market.bomb_rate || 0)}
-            </div>
-            <div className="text-[10px] text-muted">炸板率</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl font-bold text-orange-500">{(market.near_limit_up_stocks || []).length}</div>
-            <div className="text-[10px] text-muted">冲板</div>
-          </div>
-          <div className="text-center">
-            <div className={`text-xl font-bold ${mood.color}`}>{mood.text}</div>
-            <div className="text-[10px] text-muted">情绪</div>
-          </div>
-        </div>
-        
         {/* 数据来源和时间 */}
-        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-2">
+        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-2 mt-3">
           <span>数据源: {refreshConfig.data_source || 'akshare'}</span>
           <span>
             {refreshConfig.last_fetch_time 
               ? `${new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')}`
               : '--'}
-            {refreshConfig.last_fetch_duration_ms && (
+            {refreshConfig.last_fetch_duration_ms !== undefined && refreshConfig.last_fetch_duration_ms > 0 && (
               <span className="ml-1 text-[10px]">({refreshConfig.last_fetch_duration_ms}ms)</span>
             )}
           </span>
         </div>
       </div>
 
-      {/* 筛选后的统计 */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* 市场统计看板 */}
+      <div className="grid grid-cols-6 gap-3">
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('limit_up')}>
           <div className="stat-value text-rise">{limitUpStocks.length}</div>
-          <div className="stat-label">涨停(筛选)</div>
+          <div className="stat-label">涨停</div>
+          {limitUpStocks.length !== (market.limit_up_stocks || []).length && (
+            <div className="text-[10px] text-muted">全{(market.limit_up_stocks || []).length}</div>
+          )}
         </div>
         <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('limit_down')}>
           <div className="stat-value text-fall">{limitDownStocks.length}</div>
-          <div className="stat-label">跌停(筛选)</div>
+          <div className="stat-label">跌停</div>
+          {limitDownStocks.length !== (market.limit_down_stocks || []).length && (
+            <div className="text-[10px] text-muted">全{(market.limit_down_stocks || []).length}</div>
+          )}
+        </div>
+        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('near')}>
+          <div className="stat-value text-orange-500">{nearLimitUpStocks.length}</div>
+          <div className="stat-label">冲板</div>
+          {nearLimitUpStocks.length !== (market.near_limit_up_stocks || []).length && (
+            <div className="text-[10px] text-muted">全{(market.near_limit_up_stocks || []).length}</div>
+          )}
+        </div>
+        <div className="stat-card">
+          <div className={`stat-value ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : ''}`}>
+            {formatPercent(market.bomb_rate || 0)}
+          </div>
+          <div className="stat-label">炸板率</div>
         </div>
         <div className="stat-card">
           <div className="stat-value">{market.max_streak || '-'}</div>
           <div className="stat-label">连板高度</div>
         </div>
-        <div className="stat-card cursor-pointer hover:shadow-md transition-shadow" onClick={() => toggleSection('near')}>
-          <div className="stat-value text-orange-500">{nearLimitUpStocks.length}</div>
-          <div className="stat-label">冲板(筛选)</div>
+        <div className="stat-card">
+          <div className={`stat-value ${mood.color}`}>{mood.text}</div>
+          <div className="stat-label">情绪</div>
         </div>
       </div>
 

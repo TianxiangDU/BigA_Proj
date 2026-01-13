@@ -239,37 +239,38 @@ class AdataProvider:
         return pd.DataFrame()
     
     def get_index_quotes(self) -> List[Dict]:
-        """获取主要大盘指数行情"""
+        """获取主要大盘指数行情，支持多数据源备用"""
+        if not AKSHARE_AVAILABLE:
+            return []
+        
+        # 主要关注的指数配置
+        target_indices = [
+            {'code': 'sh000001', 'code_em': '000001', 'name': '上证指数', 'short': '上证', 'order': 1},
+            {'code': 'sz399001', 'code_em': '399001', 'name': '深证成指', 'short': '深证', 'order': 2},
+            {'code': 'sz399006', 'code_em': '399006', 'name': '创业板指', 'short': '创业板', 'order': 3},
+            {'code': 'sh000688', 'code_em': '000688', 'name': '科创50', 'short': '科创', 'order': 4},
+            {'code': 'sh000300', 'code_em': '000300', 'name': '沪深300', 'short': '沪深300', 'order': 5},
+            {'code': 'sh000016', 'code_em': '000016', 'name': '上证50', 'short': '上证50', 'order': 6},
+        ]
+        
         indices = []
         
-        if not AKSHARE_AVAILABLE:
-            return indices
-        
+        # 方案1: 尝试新浪接口（批量获取）
         try:
-            # 使用新浪接口获取指数行情（包含上证和深证）
             df = ak.stock_zh_index_spot_sina()
             
             if df is not None and not df.empty:
-                # 主要关注的指数 (使用新浪接口的代码格式)
-                target_indices = {
-                    'sh000001': {'name': '上证指数', 'short': '上证', 'order': 1},
-                    'sz399001': {'name': '深证成指', 'short': '深证', 'order': 2},
-                    'sz399006': {'name': '创业板指', 'short': '创业板', 'order': 3},
-                    'sh000688': {'name': '科创50', 'short': '科创', 'order': 4},
-                    'sh000300': {'name': '沪深300', 'short': '沪深300', 'order': 5},
-                    'sh000016': {'name': '上证50', 'short': '上证50', 'order': 6},
-                    'sz399005': {'name': '中小100', 'short': '中小', 'order': 7},
-                }
-                
+                sina_codes = {t['code']: t for t in target_indices}
                 for _, row in df.iterrows():
                     code = str(row.get('代码', ''))
-                    if code in target_indices:
+                    if code in sina_codes:
                         try:
+                            t = sina_codes[code]
                             indices.append({
                                 'code': code,
-                                'name': target_indices[code]['name'],
-                                'short': target_indices[code]['short'],
-                                'order': target_indices[code]['order'],
+                                'name': t['name'],
+                                'short': t['short'],
+                                'order': t['order'],
                                 'close': float(row.get('最新价', 0) or 0),
                                 'change': float(row.get('涨跌额', 0) or 0),
                                 'pct_change': float(row.get('涨跌幅', 0) or 0),
@@ -282,14 +283,91 @@ class AdataProvider:
                         except (ValueError, TypeError) as e:
                             logger.debug(f"解析指数数据失败 {code}: {e}")
                 
-                # 按预定义顺序排序
-                indices.sort(key=lambda x: x.get('order', 999))
+                if len(indices) >= 5:  # 获取到大部分指数
+                    indices.sort(key=lambda x: x.get('order', 999))
+                    logger.debug(f"新浪接口获取指数成功，共 {len(indices)} 个")
+                    return indices
+                    
+        except Exception as e:
+            logger.warning(f"新浪指数接口失败: {e}")
+        
+        # 方案2: 尝试东方财富接口
+        indices = []
+        try:
+            df = ak.stock_zh_index_spot_em()
+            em_codes = {t['code_em']: t for t in target_indices}
+            
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    code = str(row.get('代码', ''))
+                    if code in em_codes:
+                        try:
+                            t = em_codes[code]
+                            indices.append({
+                                'code': code,
+                                'name': t['name'],
+                                'short': t['short'],
+                                'order': t['order'],
+                                'close': float(row.get('最新价', 0) or 0),
+                                'change': float(row.get('涨跌额', 0) or 0),
+                                'pct_change': float(row.get('涨跌幅', 0) or 0),
+                                'open': float(row.get('今开', 0) or 0),
+                                'high': float(row.get('最高', 0) or 0),
+                                'low': float(row.get('最低', 0) or 0),
+                                'volume': float(row.get('成交量', 0) or 0),
+                                'amount': float(row.get('成交额', 0) or 0),
+                            })
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"解析指数数据失败 {code}: {e}")
                 
-                logger.debug(f"获取指数行情成功，共 {len(indices)} 个")
+                if len(indices) >= 3:
+                    indices.sort(key=lambda x: x.get('order', 999))
+                    logger.debug(f"东方财富接口获取指数成功，共 {len(indices)} 个")
+                    return indices
+                    
+        except Exception as e:
+            logger.warning(f"东方财富指数接口失败: {e}")
+        
+        # 方案3: 逐个获取分钟数据（最慢但最可靠）
+        indices = []
+        try:
+            for t in target_indices[:5]:  # 只获取前5个主要指数
+                try:
+                    code_num = t['code'].replace('sh', '').replace('sz', '')
+                    df = ak.index_zh_a_hist_min_em(symbol=code_num, period='1')
+                    if df is not None and not df.empty:
+                        latest = df.iloc[-1]
+                        prev_close = df.iloc[0]['开盘'] if len(df) > 1 else latest['收盘']
+                        close = float(latest['收盘'])
+                        change = close - prev_close
+                        pct_change = (change / prev_close * 100) if prev_close else 0
+                        
+                        indices.append({
+                            'code': t['code'],
+                            'name': t['name'],
+                            'short': t['short'],
+                            'order': t['order'],
+                            'close': close,
+                            'change': round(change, 2),
+                            'pct_change': round(pct_change, 2),
+                            'open': float(latest.get('开盘', close)),
+                            'high': float(latest.get('最高', close)),
+                            'low': float(latest.get('最低', close)),
+                            'volume': float(latest.get('成交量', 0) or 0),
+                            'amount': float(latest.get('成交额', 0) or 0),
+                        })
+                except Exception as e:
+                    logger.debug(f"获取分钟指数失败 {t['code']}: {e}")
+            
+            if len(indices) >= 3:
+                indices.sort(key=lambda x: x.get('order', 999))
+                logger.debug(f"分钟数据获取指数成功，共 {len(indices)} 个")
+                return indices
                 
         except Exception as e:
-            logger.warning(f"获取指数行情失败: {e}")
+            logger.warning(f"分钟数据指数接口失败: {e}")
         
+        logger.error("所有指数数据源都失败")
         return indices
     
     def get_daily_bars(self, symbol: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
