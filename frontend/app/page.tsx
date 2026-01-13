@@ -839,32 +839,30 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
   return (
     <div className="space-y-4">
       {/* 大盘指数看板 */}
-      <div className="card bg-gradient-to-r from-slate-50 to-white">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="card-title text-lg">📈 大盘行情</h2>
-        </div>
-        
-        {/* 大盘指数 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {(market.indices || []).map((idx: any) => (
-            <IndexCard key={idx.code} index={idx} />
+      <div className="card overflow-hidden">
+        {/* 指数网格 */}
+        <div className="grid grid-cols-3 md:grid-cols-6 divide-x divide-gray-100">
+          {(market.indices || []).slice(0, 6).map((idx: any, i: number) => (
+            <IndexCard key={idx.code} index={idx} isFirst={i === 0} />
           ))}
-          {(market.indices || []).length === 0 && (
-            <div className="col-span-full text-center text-muted text-sm py-4">
-              加载指数数据中...
-            </div>
-          )}
         </div>
         
-        {/* 数据来源和时间 */}
-        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-2 mt-3">
-          <span>数据源: {refreshConfig.data_source || 'akshare'}</span>
-          <span>
+        {(market.indices || []).length === 0 && (
+          <div className="text-center text-muted text-sm py-8">
+            <Activity className="w-6 h-6 mx-auto mb-2 opacity-50" />
+            加载指数数据中...
+          </div>
+        )}
+        
+        {/* 数据来源 */}
+        <div className="flex items-center justify-between text-[11px] text-gray-400 bg-gray-50/50 px-4 py-2">
+          <span>数据源: {refreshConfig.data_source || 'akshare (东方财富)'}</span>
+          <span className="font-mono">
             {refreshConfig.last_fetch_time 
-              ? `${new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')}`
-              : '--'}
+              ? new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')
+              : '--:--:--'}
             {refreshConfig.last_fetch_duration_ms !== undefined && refreshConfig.last_fetch_duration_ms > 0 && (
-              <span className="ml-1 text-[10px]">({refreshConfig.last_fetch_duration_ms}ms)</span>
+              <span className="ml-1 opacity-70">({refreshConfig.last_fetch_duration_ms}ms)</span>
             )}
           </span>
         </div>
@@ -1101,23 +1099,27 @@ function StockListCard({ title, icon, stocks, totalCount, expanded, onToggle, co
 }
 
 // 大盘指数卡片
-function IndexCard({ index }: { index: any }) {
+function IndexCard({ index, isFirst }: { index: any; isFirst?: boolean }) {
   const pctChange = index.pct_change || 0
   const isUp = pctChange >= 0
   const colorClass = isUp ? 'text-rise' : 'text-fall'
-  const bgClass = isUp ? 'bg-rise/5' : 'bg-fall/5'
+  
+  // 简化指数名称
+  const shortName = index.short || index.name?.replace('指数', '') || index.name
   
   return (
-    <div className={`${bgClass} rounded-lg p-3 text-center min-w-[100px]`}>
-      <div className="text-xs text-muted mb-1 truncate font-medium">{index.short || index.name}</div>
-      <div className={`text-lg font-bold ${colorClass} leading-tight`}>
-        {formatNumber(index.close, index.close > 1000 ? 0 : 2)}
+    <div className={`py-4 px-3 text-center hover:bg-gray-50/50 transition-colors ${isFirst ? '' : ''}`}>
+      <div className="text-xs text-gray-500 mb-1.5 font-medium">{shortName}</div>
+      <div className={`text-xl font-bold ${colorClass} leading-tight tracking-tight`}>
+        {formatNumber(index.close, index.close > 10000 ? 0 : index.close > 1000 ? 0 : 2)}
       </div>
-      <div className={`text-sm font-semibold ${colorClass}`}>
-        {isUp ? '+' : ''}{pctChange.toFixed(2)}%
-      </div>
-      <div className={`text-[10px] ${colorClass}`}>
-        {isUp ? '+' : ''}{formatNumber(index.change, 2)}
+      <div className="mt-1 space-y-0">
+        <div className={`text-sm font-semibold ${colorClass}`}>
+          {isUp ? '+' : ''}{pctChange.toFixed(2)}%
+        </div>
+        <div className={`text-[10px] ${colorClass} opacity-80`}>
+          {isUp ? '+' : ''}{formatNumber(index.change, 2)}
+        </div>
       </div>
     </div>
   )
