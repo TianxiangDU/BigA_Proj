@@ -281,38 +281,8 @@ body {
 }
 
 /* ==================== 移动端底部导航 ==================== */
-.mobile-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--background);
-  border-top: 1px solid var(--border-light);
-  display: flex;
-  justify-content: space-around;
-  padding: 6px 0;
-  padding-bottom: max(6px, env(safe-area-inset-bottom));
-  z-index: 100;
-}
-
-@media (min-width: 768px) {
-  .mobile-nav { display: none; }
-}
-
-.mobile-nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: 10px;
-  color: var(--muted);
-  padding: 4px 16px;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.mobile-nav-item.active {
-  color: var(--rise);
+.safe-area-pb {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
 /* ==================== 按钮 ==================== */

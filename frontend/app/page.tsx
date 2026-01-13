@@ -228,64 +228,104 @@ export default function HomePage() {
     )
   }
 
+  // 风险灯颜色
+  const riskLight = dashboard?.summary?.risk_light || dashboard?.market?.risk_light || 'GREEN'
+  const riskLightColor = riskLight === 'GREEN' ? 'bg-green-500' : riskLight === 'YELLOW' ? 'bg-yellow-400' : 'bg-red-500'
+  
   return (
     <div className="min-h-screen bg-background-secondary pb-20 md:pb-4">
-      {/* 顶部导航 */}
-      <header className="nav-header">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-base font-bold text-foreground flex items-center gap-2">
-              <Flame className="w-5 h-5 text-rise" />
-              <span className="hidden sm:inline">A股打板提示</span>
-            </h1>
-            <nav className="hidden md:flex gap-1">
+      {/* 顶部导航 - 简洁设计 */}
+      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+        <div className="max-w-6xl mx-auto">
+          {/* 主导航行 */}
+          <div className="px-4 h-14 flex items-center justify-between">
+            {/* 左侧：Logo + 状态指示 */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className={`w-2.5 h-2.5 rounded-full ${riskLightColor} animate-pulse`} />
+                <h1 className="text-lg font-bold text-gray-800">
+                  <span className="hidden sm:inline">打板提示</span>
+                  <span className="sm:hidden">打板</span>
+                </h1>
+              </div>
+              
+              {/* 桌面端状态 */}
+              <div className="hidden md:flex items-center gap-2 text-xs text-gray-500">
+                <span className={`px-2 py-0.5 rounded ${
+                  dashboard?.refresh_config?.is_trading 
+                    ? 'bg-green-50 text-green-600' 
+                    : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {dashboard?.trading_session === 'MORNING' ? '上午盘' :
+                   dashboard?.trading_session === 'AFTERNOON' ? '下午盘' :
+                   dashboard?.trading_session === 'LUNCH' ? '午休' :
+                   dashboard?.trading_session === 'PRE_OPEN' ? '集合竞价' : '已收盘'}
+                </span>
+                {lastUpdate && (
+                  <span className="text-gray-400">
+                    {lastUpdate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            {/* 桌面端导航标签 */}
+            <nav className="hidden md:flex items-center bg-gray-50 rounded-lg p-1">
               {[
-                { id: 'dashboard', label: '实时看板', icon: LayoutDashboard },
-                { id: 'pool', label: '候选池', icon: ListFilter },
-                { id: 'alerts', label: '提示卡', icon: Bell },
+                { id: 'dashboard', label: '看板', icon: LayoutDashboard },
+                { id: 'pool', label: '候选', icon: ListFilter },
+                { id: 'alerts', label: '提示', icon: Bell },
                 { id: 'portfolio', label: '持仓', icon: Wallet },
                 { id: 'trading', label: '交易', icon: Zap },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as TabType)}
-                  className={`nav-tab flex items-center gap-1.5 ${activeTab === tab.id ? 'active' : ''}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    activeTab === tab.id 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
                 >
                   <tab.icon className="w-4 h-4" />
-                  {tab.label}
+                  <span>{tab.label}</span>
                 </button>
               ))}
             </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            <SessionBadge session={dashboard?.trading_session} />
-            <RiskLightBadge light={dashboard?.summary?.risk_light || 'GREEN'} />
-            <RefreshStatus 
-              countdown={countdown} 
-              refreshSec={refreshSec} 
-              lastUpdate={lastUpdate}
-              isTrading={dashboard?.refresh_config?.is_trading}
-              fetchDuration={dashboard?.refresh_config?.last_fetch_duration_ms}
-              fetchCount={dashboard?.refresh_config?.fetch_count}
-            />
-            <button 
-              onClick={() => setShowFilter(!showFilter)}
-              className={`btn btn-secondary p-2 ${showFilter ? 'bg-rise/10 text-rise' : ''}`}
-            >
-              <Filter className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={handleRefresh} 
-              disabled={refreshing}
-              className="btn btn-secondary p-2"
-              title="手动刷新"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
+            
+            {/* 右侧操作按钮 */}
+            <div className="flex items-center gap-1">
+              {/* 刷新倒计时 - 简化 */}
+              <div className="hidden sm:flex items-center gap-1 text-xs text-gray-400 mr-2">
+                <span className="tabular-nums">{countdown}s</span>
+              </div>
+              
+              {/* 筛选按钮 */}
+              <button 
+                onClick={() => setShowFilter(!showFilter)}
+                className={`p-2 rounded-lg transition-colors ${
+                  showFilter 
+                    ? 'bg-primary/10 text-primary' 
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Filter className="w-5 h-5" />
+              </button>
+              
+              {/* 刷新按钮 */}
+              <button 
+                onClick={handleRefresh} 
+                disabled={refreshing}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                title="刷新数据"
+              >
+                <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin text-primary' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
         
-        {/* 筛选器 */}
+        {/* 筛选面板 */}
         {showFilter && (
           <FilterPanel 
             config={filterConfig} 
@@ -316,23 +356,33 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* 移动端底部导航 */}
-      <nav className="mobile-nav">
-        {[
-          { id: 'dashboard', label: '看板', icon: LayoutDashboard },
-          { id: 'pool', label: '候选', icon: ListFilter },
-          { id: 'alerts', label: '提示', icon: Bell },
-          { id: 'trading', label: '交易', icon: Zap },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as TabType)}
-            className={`mobile-nav-item ${activeTab === tab.id ? 'active' : ''}`}
-          >
-            <tab.icon className="w-5 h-5 mb-0.5" />
-            <span>{tab.label}</span>
-          </button>
-        ))}
+      {/* 移动端底部导航 - 简洁设计 */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-gray-100 safe-area-pb">
+        <div className="flex items-stretch">
+          {[
+            { id: 'dashboard', label: '看板', icon: LayoutDashboard },
+            { id: 'pool', label: '候选', icon: ListFilter },
+            { id: 'alerts', label: '提示', icon: Bell },
+            { id: 'portfolio', label: '持仓', icon: Wallet },
+            { id: 'trading', label: '交易', icon: Zap },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as TabType)}
+              className={`flex-1 flex flex-col items-center justify-center py-2 transition-colors ${
+                activeTab === tab.id 
+                  ? 'text-primary' 
+                  : 'text-gray-400'
+              }`}
+            >
+              <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'stroke-2' : ''}`} />
+              <span className="text-[10px] mt-0.5 font-medium">{tab.label}</span>
+              {activeTab === tab.id && (
+                <div className="absolute bottom-0 w-8 h-0.5 bg-primary rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
       </nav>
     </div>
   )
