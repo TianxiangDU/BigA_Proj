@@ -27,6 +27,14 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Activity,
+  Zap,
+  DollarSign,
+  BarChart3,
+  Brain,
+  PlayCircle,
+  PauseCircle,
+  Settings2,
 } from 'lucide-react'
 
 // 筛选选项
@@ -54,7 +62,7 @@ const SORT_OPTIONS = [
 
 type SortKey = 'pct_change' | 'amount' | 'close' | 'symbol' | 'name'
 
-type TabType = 'dashboard' | 'pool' | 'alerts' | 'portfolio'
+type TabType = 'dashboard' | 'pool' | 'alerts' | 'portfolio' | 'trading'
 
 // 筛选配置类型
 interface FilterConfig {
@@ -82,6 +90,14 @@ export default function HomePage() {
     minAmount: 0,
   })
   const [showFilter, setShowFilter] = useState(false)
+  
+  // 情绪分析
+  const [sentiment, setSentiment] = useState<any>(null)
+  
+  // 交易状态
+  const [tradingStatus, setTradingStatus] = useState<any>(null)
+  const [trades, setTrades] = useState<any[]>([])
+  const [orders, setOrders] = useState<any>({ pending: [], history: [] })
 
   const loadData = useCallback(async () => {
     try {
@@ -104,13 +120,18 @@ export default function HomePage() {
         setLastUpdate(new Date())
       }
       
+      // 并行加载其他数据
       Promise.all([
         api.getCandidates(undefined, 100),
         api.getAlerts(50),
-      ]).then(([candidatesData, alertsData]) => {
+        api.getSentiment().catch(() => null),
+        api.getTradingStatus().catch(() => null),
+      ]).then(([candidatesData, alertsData, sentimentData, tradingData]) => {
         setCandidates(candidatesData.candidates || [])
         setAlerts(alertsData.alerts || [])
-      }).catch(e => console.error('加载候选池失败:', e))
+        if (sentimentData) setSentiment(sentimentData)
+        if (tradingData) setTradingStatus(tradingData)
+      }).catch(e => console.error('加载数据失败:', e))
       
     } catch (error) {
       console.error('加载数据失败:', error)
@@ -223,6 +244,7 @@ export default function HomePage() {
                 { id: 'pool', label: '候选池', icon: ListFilter },
                 { id: 'alerts', label: '提示卡', icon: Bell },
                 { id: 'portfolio', label: '持仓', icon: Wallet },
+                { id: 'trading', label: '交易', icon: Zap },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -285,6 +307,13 @@ export default function HomePage() {
         {activeTab === 'pool' && <PoolView candidates={candidates} />}
         {activeTab === 'alerts' && <AlertsView alerts={alerts} onRefresh={loadData} />}
         {activeTab === 'portfolio' && <PortfolioView riskState={riskState} />}
+        {activeTab === 'trading' && (
+          <TradingView 
+            tradingStatus={tradingStatus} 
+            sentiment={sentiment}
+            onRefresh={loadData}
+          />
+        )}
       </main>
 
       {/* 移动端底部导航 */}
@@ -293,7 +322,7 @@ export default function HomePage() {
           { id: 'dashboard', label: '看板', icon: LayoutDashboard },
           { id: 'pool', label: '候选', icon: ListFilter },
           { id: 'alerts', label: '提示', icon: Bell },
-          { id: 'portfolio', label: '持仓', icon: Wallet },
+          { id: 'trading', label: '交易', icon: Zap },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1080,6 +1109,335 @@ function PortfolioView({ riskState }: { riskState: any }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ==================== 交易视图 ====================
+
+function TradingView({ tradingStatus, sentiment, onRefresh }: { 
+  tradingStatus: any
+  sentiment: any 
+  onRefresh: () => void
+}) {
+  const [activeMode, setActiveMode] = useState(tradingStatus?.mode || 'paper')
+  const [switching, setSwitching] = useState(false)
+  
+  useEffect(() => {
+    if (tradingStatus?.mode) {
+      setActiveMode(tradingStatus.mode)
+    }
+  }, [tradingStatus?.mode])
+  
+  const handleModeSwitch = async (mode: string) => {
+    setSwitching(true)
+    try {
+      await api.switchTradingMode(mode)
+      onRefresh()
+    } catch (e) {
+      console.error('切换模式失败:', e)
+    } finally {
+      setSwitching(false)
+    }
+  }
+  
+  const handleResetPaper = async () => {
+    if (confirm('确定要重置模拟盘账户吗？所有持仓和交易记录将被清空。')) {
+      try {
+        await api.resetPaperAccount()
+        onRefresh()
+      } catch (e) {
+        console.error('重置失败:', e)
+      }
+    }
+  }
+  
+  const account = tradingStatus?.account || {}
+  const isPaper = activeMode === 'paper'
+  const isLive = activeMode === 'live'
+  
+  return (
+    <div className="space-y-4">
+      {/* 情绪分析面板 */}
+      <SentimentCard sentiment={sentiment} />
+      
+      {/* 交易模式切换 */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="card-title flex items-center gap-2">
+            <Zap className="w-5 h-5 text-primary" />
+            交易模式
+          </h2>
+          <div className="flex items-center gap-2">
+            {['paper', 'live', 'disabled'].map((mode) => (
+              <button
+                key={mode}
+                onClick={() => handleModeSwitch(mode)}
+                disabled={switching}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${
+                  activeMode === mode
+                    ? mode === 'paper' 
+                      ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300'
+                      : mode === 'live'
+                      ? 'bg-green-100 text-green-700 ring-2 ring-green-300'
+                      : 'bg-gray-100 text-gray-700 ring-2 ring-gray-300'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                {mode === 'paper' && '🎮 模拟盘'}
+                {mode === 'live' && '💰 实盘'}
+                {mode === 'disabled' && '🚫 禁用'}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {/* 模拟盘账户信息 */}
+        {isPaper && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-3 bg-blue-50 rounded-lg">
+                <div className="text-sm text-blue-600 mb-1">总资产</div>
+                <div className="text-xl font-bold text-blue-700">
+                  {formatAmount(account.total_value || 0)}
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600 mb-1">可用资金</div>
+                <div className="text-xl font-bold">
+                  {formatAmount(account.cash || 0)}
+                </div>
+              </div>
+              <div className={`p-3 rounded-lg ${(account.total_pnl || 0) >= 0 ? 'bg-rise/10' : 'bg-fall/10'}`}>
+                <div className="text-sm text-gray-600 mb-1">累计盈亏</div>
+                <div className={`text-xl font-bold ${(account.total_pnl || 0) >= 0 ? 'text-rise' : 'text-fall'}`}>
+                  {(account.total_pnl || 0) >= 0 ? '+' : ''}{formatAmount(account.total_pnl || 0)}
+                </div>
+              </div>
+              <div className={`p-3 rounded-lg ${(account.total_pnl_pct || 0) >= 0 ? 'bg-rise/10' : 'bg-fall/10'}`}>
+                <div className="text-sm text-gray-600 mb-1">收益率</div>
+                <div className={`text-xl font-bold ${(account.total_pnl_pct || 0) >= 0 ? 'text-rise' : 'text-fall'}`}>
+                  {(account.total_pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(account.total_pnl_pct || 0)}
+                </div>
+              </div>
+            </div>
+            
+            {/* 持仓列表 */}
+            {Object.keys(account.positions || {}).length > 0 && (
+              <div>
+                <h3 className="font-medium mb-2">当前持仓</h3>
+                <div className="space-y-2">
+                  {Object.values(account.positions || {}).map((pos: any) => (
+                    <div key={pos.symbol} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-medium">{pos.symbol}</span>
+                        <span className="text-muted text-sm">{pos.name}</span>
+                        <span className="text-sm text-gray-500">{pos.shares}股</span>
+                      </div>
+                      <div className={`font-medium ${(pos.pnl || 0) >= 0 ? 'text-rise' : 'text-fall'}`}>
+                        {(pos.pnl || 0) >= 0 ? '+' : ''}{formatAmount(pos.pnl || 0)}
+                        <span className="text-xs ml-1">
+                          ({(pos.pnl_pct || 0) >= 0 ? '+' : ''}{formatPercent(pos.pnl_pct || 0)})
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="flex justify-end">
+              <button onClick={handleResetPaper} className="btn btn-secondary text-sm">
+                🔄 重置账户
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* 实盘提示 */}
+        {isLive && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 text-yellow-700 font-medium mb-2">
+              <AlertTriangle className="w-5 h-5" />
+              实盘交易
+            </div>
+            <p className="text-sm text-yellow-600">
+              实盘交易需要配置券商连接。当前支持 EasyTrader（同花顺等客户端）。
+              请在后端配置券商信息后使用。
+            </p>
+            <div className="mt-3 text-xs text-yellow-500">
+              券商: {tradingStatus?.config?.broker || '未配置'} | 
+              确认模式: {tradingStatus?.config?.require_confirmation ? '需确认' : '自动'}
+            </div>
+          </div>
+        )}
+        
+        {/* 禁用状态 */}
+        {activeMode === 'disabled' && (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+            <PauseCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+            <p className="text-gray-600">交易功能已禁用，仅可查看行情</p>
+          </div>
+        )}
+      </div>
+      
+      {/* 交易记录 */}
+      {isPaper && (account.trades || []).length > 0 && (
+        <div className="card">
+          <h2 className="card-title mb-3">最近交易</h2>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {(account.trades || []).slice(-10).reverse().map((trade: any, i: number) => (
+              <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`font-medium ${trade.type === 'BUY' ? 'text-rise' : 'text-fall'}`}>
+                    {trade.type === 'BUY' ? '买入' : '卖出'}
+                  </span>
+                  <span className="font-mono">{trade.symbol}</span>
+                  <span className="text-muted">{trade.shares}股 @ {trade.price}</span>
+                </div>
+                <div className="text-right">
+                  {trade.pnl !== undefined && (
+                    <span className={trade.pnl >= 0 ? 'text-rise' : 'text-fall'}>
+                      {trade.pnl >= 0 ? '+' : ''}{formatAmount(trade.pnl)}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted ml-2">
+                    {new Date(trade.ts).toLocaleTimeString('zh-CN')}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 情绪分析卡片
+function SentimentCard({ sentiment }: { sentiment: any }) {
+  if (!sentiment) {
+    return (
+      <div className="card">
+        <div className="text-center text-muted py-8">
+          <Brain className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <p>情绪分析加载中...</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const score = sentiment.sentiment_score || 50
+  const grade = sentiment.sentiment_grade || 'C'
+  const text = sentiment.sentiment_text || '中性'
+  const riskLight = sentiment.risk_light || 'YELLOW'
+  
+  // 情绪分数颜色
+  const getScoreColor = (s: number) => {
+    if (s >= 70) return 'text-rise'
+    if (s >= 50) return 'text-orange-500'
+    if (s >= 30) return 'text-yellow-600'
+    return 'text-fall'
+  }
+  
+  // 情绪等级背景
+  const getGradeBg = (g: string) => {
+    switch (g) {
+      case 'A': return 'bg-green-100 text-green-700'
+      case 'B': return 'bg-green-50 text-green-600'
+      case 'C': return 'bg-yellow-50 text-yellow-700'
+      case 'D': return 'bg-orange-50 text-orange-600'
+      case 'E': return 'bg-red-50 text-red-600'
+      default: return 'bg-gray-50 text-gray-600'
+    }
+  }
+  
+  return (
+    <div className="card bg-gradient-to-r from-purple-50 to-indigo-50">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="card-title flex items-center gap-2">
+          <Brain className="w-5 h-5 text-purple-600" />
+          市场情绪分析
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className={`px-3 py-1 rounded-full text-sm font-bold ${getGradeBg(grade)}`}>
+            {grade}级 {text}
+          </span>
+          {sentiment.needs_agent_analysis && (
+            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full animate-pulse">
+              🤖 需深度分析
+            </span>
+          )}
+        </div>
+      </div>
+      
+      {/* 情绪分数仪表 */}
+      <div className="flex items-center gap-6 mb-4">
+        <div className="text-center">
+          <div className={`text-4xl font-bold ${getScoreColor(score)}`}>{score}</div>
+          <div className="text-xs text-muted">情绪分数</div>
+        </div>
+        
+        {/* 进度条 */}
+        <div className="flex-1">
+          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all ${
+                score >= 70 ? 'bg-green-500' : 
+                score >= 50 ? 'bg-yellow-500' : 
+                score >= 30 ? 'bg-orange-500' : 'bg-red-500'
+              }`}
+              style={{ width: `${score}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted mt-1">
+            <span>极弱</span>
+            <span>中性</span>
+            <span>极强</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* 多维度指标 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="p-2 bg-white/50 rounded">
+          <div className="text-xs text-muted">涨跌比</div>
+          <div className={`font-bold ${sentiment.rise_fall_ratio > 1 ? 'text-rise' : 'text-fall'}`}>
+            {sentiment.rise_fall_ratio?.toFixed(2) || '-'}
+          </div>
+        </div>
+        <div className="p-2 bg-white/50 rounded">
+          <div className="text-xs text-muted">上证涨跌</div>
+          <div className={`font-bold ${(sentiment.sh_pct_change || 0) >= 0 ? 'text-rise' : 'text-fall'}`}>
+            {sentiment.sh_pct_change >= 0 ? '+' : ''}{sentiment.sh_pct_change?.toFixed(2) || 0}%
+          </div>
+        </div>
+        <div className="p-2 bg-white/50 rounded">
+          <div className="text-xs text-muted">创业板涨跌</div>
+          <div className={`font-bold ${(sentiment.cyb_pct_change || 0) >= 0 ? 'text-rise' : 'text-fall'}`}>
+            {sentiment.cyb_pct_change >= 0 ? '+' : ''}{sentiment.cyb_pct_change?.toFixed(2) || 0}%
+          </div>
+        </div>
+        <div className="p-2 bg-white/50 rounded">
+          <div className="text-xs text-muted">成交额</div>
+          <div className="font-bold">{formatAmount(sentiment.total_amount * 100000000)}</div>
+        </div>
+      </div>
+      
+      {/* Agent 分析原因 */}
+      {sentiment.needs_agent_analysis && sentiment.agent_analysis_reasons?.length > 0 && (
+        <div className="mt-3 p-2 bg-purple-100/50 rounded text-sm">
+          <div className="font-medium text-purple-700 mb-1">🤖 Agent 分析建议：</div>
+          <ul className="text-purple-600 space-y-1">
+            {sentiment.agent_analysis_reasons.map((reason: string, i: number) => (
+              <li key={i} className="flex items-start gap-1">
+                <span className="text-purple-400">•</span>
+                {reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

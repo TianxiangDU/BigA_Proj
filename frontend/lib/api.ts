@@ -119,6 +119,80 @@ export const api = {
     fetchAPI<any>(`/api/blacklist/${symbol}`, {
       method: 'DELETE',
     }),
+
+  // ==================== 市场情绪 ====================
+  
+  // 获取增强版市场情绪分析
+  getSentiment: () => fetchAPI<any>('/api/market/sentiment'),
+
+  // 获取情绪历史
+  getSentimentHistory: (limit: number = 100) =>
+    fetchAPI<any>(`/api/market/sentiment/history?limit=${limit}`),
+
+  // ==================== 交易模式 ====================
+  
+  // 获取交易状态
+  getTradingStatus: () => fetchAPI<any>('/api/trading/status'),
+
+  // 切换交易模式
+  switchTradingMode: (mode: string, reason?: string) => {
+    const params = new URLSearchParams({ mode })
+    if (reason) params.append('reason', reason)
+    return fetchAPI<any>(`/api/trading/mode?${params}`, { method: 'POST' })
+  },
+
+  // 获取交易账户
+  getTradingAccount: () => fetchAPI<any>('/api/trading/account'),
+
+  // 重置模拟盘
+  resetPaperAccount: (initialCapital: number = 1000000) =>
+    fetchAPI<any>(`/api/trading/paper/reset?initial_capital=${initialCapital}`, {
+      method: 'POST',
+    }),
+
+  // 执行交易
+  executeTrade: (trade: {
+    symbol: string
+    name?: string
+    action: 'BUY' | 'SELL'
+    price: number
+    shares: number
+    strategy_id?: string
+    reason?: string
+  }) =>
+    fetchAPI<any>('/api/trading/execute', {
+      method: 'POST',
+      body: JSON.stringify(trade),
+    }),
+
+  // 获取订单
+  getOrders: (limit: number = 100) =>
+    fetchAPI<any>(`/api/trading/orders?limit=${limit}`),
+
+  // 确认订单
+  confirmOrder: (orderId: string) =>
+    fetchAPI<any>(`/api/trading/orders/${orderId}/confirm`, { method: 'POST' }),
+
+  // 取消订单
+  cancelOrder: (orderId: string) =>
+    fetchAPI<any>(`/api/trading/orders/${orderId}/cancel`, { method: 'POST' }),
+
+  // 获取交易记录
+  getTrades: (limit: number = 100) =>
+    fetchAPI<any>(`/api/trading/trades?limit=${limit}`),
+
+  // 配置实盘
+  configureLive: (config: {
+    broker: string
+    account_id?: string
+    require_confirmation?: boolean
+    max_single_order?: number
+    daily_limit?: number
+  }) =>
+    fetchAPI<any>('/api/trading/live/configure', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
 }
 
 // ==================== WebSocket 客户端 ====================
