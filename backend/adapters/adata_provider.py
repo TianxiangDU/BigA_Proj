@@ -29,6 +29,7 @@ class AdataProvider:
     def __init__(self):
         self._quote_cache: Optional[pd.DataFrame] = None
         self._quote_cache_time: Optional[datetime] = None
+        self._quote_cache_time: Optional[datetime] = None
         self._cache_ttl = timedelta(seconds=30)
     
     def is_available(self) -> bool:
@@ -128,6 +129,12 @@ class AdataProvider:
     
     def get_realtime_quote(self, symbols: List[str]) -> pd.DataFrame:
         return self.get_realtime_quote_batch(symbols)
+    
+    def get_cached_quotes(self) -> pd.DataFrame:
+        """获取缓存的行情数据（不触发新的数据请求）"""
+        if self._quote_cache is not None:
+            return self._quote_cache.copy()
+        return pd.DataFrame()
     
     def get_limit_up_stocks(self) -> pd.DataFrame:
         """获取涨停股列表"""

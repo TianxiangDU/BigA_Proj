@@ -23,6 +23,9 @@ from ..adapters.adata_provider import AdataProvider
 from ..features.engine import FeatureEngine
 from ..market.regime import MarketRegime
 from ..market.themes import ThemeTracker
+from ..market.sentiment import MarketSentiment
+from ..trading.mode_manager import TradingModeManager
+from ..trading.executor import TradingExecutor
 from ..strategies.registry import StrategyRegistry
 from ..signals.planner import SignalPlanner
 from ..risk.engine import RiskEngine
@@ -105,6 +108,13 @@ class AppState:
         self.snapshot_manager = SnapshotManager(self.db)
         self.alert_manager = AlertManager(self.db)
         self.replay_manager = ReplayManager(self.db)
+        
+        # 增强版市场情绪分析
+        self.market_sentiment = MarketSentiment()
+        
+        # 交易模式管理
+        self.trading_mode = TradingModeManager(initial_mode='paper')
+        self.trading_executor = TradingExecutor(self.trading_mode)
         
         # 缓存
         self._stock_features: Dict[str, Dict] = {}
@@ -896,6 +906,236 @@ def create_app() -> FastAPI:
                 'test': 'GET /api/agent/test'
             }
         }
+    
+    # ==================== 增强版市场情绪 ====================
+    
+    @app.get("/api/market/sentiment")
+    async def get_market_sentiment():
+        """
+        获取增强版市场情绪分析
+        
+        返回多维度的市场情绪指标，包括：
+        - 涨跌停分析
+        - 大盘指数分析
+        - 资金流向
+        - 涨跌分布
+        - 综合情绪评分
+        - Agent分析建议
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        # 获取当前行情数据
+        quotes_df = app_state.data_provider.get_cached_quotes()
+        indices = app_state.data_provider.get_index_quotes()
+        
+        # 分析情绪
+        sentiment = app_state.market_sentiment.analyze(
+            all_quotes=quotes_df,
+            indices=indices
+        )
+        
+        # 添加趋势信息
+        sentiment['trend'] = app_state.market_sentiment.get_trend()
+        
+        return sentiment
+    
+    @app.get("/api/market/sentiment/history")
+    async def get_sentiment_history(limit: int = 100):
+        """获取情绪历史记录"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        return {
+            'history': app_state.market_sentiment.get_history(limit),
+            'trend': app_state.market_sentiment.get_trend()
+        }
+    
+    # ==================== 交易模式管理 ====================
+    
+    @app.get("/api/trading/status")
+    async def get_trading_status():
+        """
+        获取交易状态
+        
+        返回当前交易模式（模拟盘/实盘）和账户信息
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        status = app_state.trading_mode.get_status()
+        
+        # 根据模式返回不同账户信息
+        if app_state.trading_mode.is_paper:
+            status['account'] = app_state.trading_mode.get_paper_account()
+        else:
+            status['config'] = app_state.trading_mode.get_live_config()
+        
+        status['executor'] = app_state.trading_executor.get_status()
+        
+        return status
+    
+    @app.post("/api/trading/mode")
+    async def switch_trading_mode(
+        mode: str = Query(..., description="paper/live/disabled"),
+        reason: str = Query(None, description="切换原因")
+    ):
+        """
+        切换交易模式
+        
+        - paper: 模拟盘
+        - live: 实盘
+        - disabled: 禁用交易
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        result = app_state.trading_mode.switch_mode(mode, reason)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error'))
+        
+        # 广播模式变更
+        await ws_manager.broadcast({
+            'type': 'trading_mode_changed',
+            'data': result
+        })
+        
+        return result
+    
+    @app.get("/api/trading/account")
+    async def get_trading_account():
+        """获取交易账户信息"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        if app_state.trading_mode.is_paper:
+            return app_state.trading_mode.get_paper_account()
+        else:
+            return app_state.trading_mode.get_live_config()
+    
+    @app.post("/api/trading/paper/reset")
+    async def reset_paper_account(
+        initial_capital: float = Query(1000000.0, description="初始资金")
+    ):
+        """重置模拟盘账户"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        return app_state.trading_mode.paper_reset(initial_capital)
+    
+    @app.post("/api/trading/execute")
+    async def execute_trade(body: Dict):
+        """
+        执行交易
+        
+        请求体:
+        {
+            "symbol": "600001",
+            "name": "邯郸钢铁",
+            "action": "BUY",
+            "price": 10.5,
+            "shares": 100,
+            "strategy_id": "reseal_v1",
+            "reason": "回封信号"
+        }
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        result = app_state.trading_executor.execute_signal(body)
+        
+        if result['success']:
+            # 广播交易信息
+            await ws_manager.broadcast({
+                'type': 'trade_executed',
+                'data': {
+                    'mode': result.get('mode'),
+                    'order': result.get('order')
+                }
+            })
+        
+        return result
+    
+    @app.get("/api/trading/orders")
+    async def get_orders(
+        status: str = Query(None, description="筛选状态"),
+        limit: int = Query(100, description="返回数量")
+    ):
+        """获取订单列表"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        return {
+            'pending': app_state.trading_executor.get_pending_orders(),
+            'history': app_state.trading_executor.get_order_history(limit)
+        }
+    
+    @app.post("/api/trading/orders/{order_id}/confirm")
+    async def confirm_order(order_id: str):
+        """确认待执行订单（实盘）"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        result = app_state.trading_executor.confirm_order(order_id)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error'))
+        
+        return result
+    
+    @app.post("/api/trading/orders/{order_id}/cancel")
+    async def cancel_order(order_id: str):
+        """取消待执行订单"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        result = app_state.trading_executor.cancel_order(order_id)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error'))
+        
+        return result
+    
+    @app.get("/api/trading/trades")
+    async def get_trades(limit: int = Query(100)):
+        """获取交易记录"""
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        return {
+            'trades': app_state.trading_mode.get_trades(limit),
+            'mode': app_state.trading_mode.mode.value
+        }
+    
+    @app.post("/api/trading/live/configure")
+    async def configure_live_trading(body: Dict):
+        """
+        配置实盘交易
+        
+        请求体:
+        {
+            "broker": "easytrader",
+            "account_id": "xxx",
+            "require_confirmation": true,
+            "max_single_order": 50000,
+            "daily_limit": 200000
+        }
+        """
+        if not app_state:
+            raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        broker = body.get('broker')
+        if not broker:
+            raise HTTPException(status_code=400, detail="缺少 broker 参数")
+        
+        result = app_state.trading_mode.configure_live(
+            broker=broker,
+            account_id=body.get('account_id'),
+            **{k: v for k, v in body.items() if k not in ['broker', 'account_id']}
+        )
+        
+        return result
     
     # ==================== WebSocket ====================
     
