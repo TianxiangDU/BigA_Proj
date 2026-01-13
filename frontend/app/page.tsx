@@ -63,7 +63,7 @@ const SORT_OPTIONS = [
 
 type SortKey = 'pct_change' | 'amount' | 'close' | 'symbol' | 'name'
 
-type TabType = 'dashboard' | 'pool' | 'alerts' | 'portfolio' | 'trading'
+type TabType = 'dashboard' | 'pool' | 'alerts' | 'trading'
 
 // 筛选配置类型
 interface FilterConfig {
@@ -256,7 +256,6 @@ export default function HomePage() {
                 { id: 'dashboard', label: '看板', icon: LayoutDashboard },
                 { id: 'pool', label: '候选', icon: ListFilter },
                 { id: 'alerts', label: '提示', icon: Bell },
-                { id: 'portfolio', label: '持仓', icon: Wallet },
                 { id: 'trading', label: '交易', icon: Zap },
               ].map((tab) => (
                 <button
@@ -331,10 +330,10 @@ export default function HomePage() {
         )}
         {activeTab === 'pool' && <PoolView candidates={candidates} />}
         {activeTab === 'alerts' && <AlertsView alerts={alerts} onRefresh={loadData} />}
-        {activeTab === 'portfolio' && <PortfolioView riskState={riskState} />}
         {activeTab === 'trading' && (
           <TradingView 
             tradingStatus={tradingStatus} 
+            riskState={riskState}
             onRefresh={loadData}
           />
         )}
@@ -347,7 +346,6 @@ export default function HomePage() {
             { id: 'dashboard', label: '看板', icon: LayoutDashboard },
             { id: 'pool', label: '候选', icon: ListFilter },
             { id: 'alerts', label: '提示', icon: Bell },
-            { id: 'portfolio', label: '持仓', icon: Wallet },
             { id: 'trading', label: '交易', icon: Zap },
           ].map((tab) => (
             <button
@@ -521,6 +519,17 @@ function SentimentIndicator({ sentiment, dashboard }: { sentiment: any; dashboar
   const grade = sentiment?.sentiment_grade || 'C'
   const gradeText = sentiment?.sentiment_text || '中性'
   
+  // 交易时段
+  const session = dashboard?.trading_session || 'CLOSED'
+  const sessionConfig: Record<string, { label: string; active: boolean }> = {
+    PRE_OPEN: { label: '集合竞价', active: true },
+    MORNING: { label: '上午盘', active: true },
+    LUNCH: { label: '午休', active: false },
+    AFTERNOON: { label: '下午盘', active: true },
+    CLOSED: { label: '已收盘', active: false },
+  }
+  const sessionInfo = sessionConfig[session] || { label: session, active: false }
+  
   // 风险灯配置
   const lightConfig: Record<string, { bg: string; glow: string; label: string }> = {
     GREEN: { bg: 'bg-green-500', glow: 'shadow-green-500/50', label: '绿灯' },
@@ -569,25 +578,29 @@ function SentimentIndicator({ sentiment, dashboard }: { sentiment: any; dashboar
   }
 
   return (
-    <div 
-      className="relative"
-      onMouseEnter={() => setShowDetails(true)}
-      onMouseLeave={() => setShowDetails(false)}
-    >
-      {/* 主显示区域 */}
-      <div className="flex items-center gap-2 cursor-pointer px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
-        {/* 风险灯 */}
-        <div className={`w-3 h-3 rounded-full ${lc.bg} shadow-lg ${lc.glow} animate-pulse`} />
-        
-        {/* 分数和等级 */}
-        <div className="hidden sm:flex items-center gap-1.5">
-          <span className={`font-bold ${getScoreColor(score)}`}>{score}</span>
-          <span className="text-xs text-gray-500">{grade}级</span>
+    <div className="flex items-center gap-2">
+      {/* 交易时段 */}
+      <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+        sessionInfo.active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
+      }`}>
+        {sessionInfo.label}
+      </span>
+      
+      {/* 情绪指示器（带hover） */}
+      <div 
+        className="relative"
+        onMouseEnter={() => setShowDetails(true)}
+        onMouseLeave={() => setShowDetails(false)}
+      >
+        {/* 主显示区域 */}
+        <div className="flex items-center gap-1.5 cursor-pointer px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+          {/* 风险灯 */}
+          <div className={`w-2.5 h-2.5 rounded-full ${lc.bg} shadow-lg ${lc.glow} ${sessionInfo.active ? 'animate-pulse' : ''}`} />
+          
+          {/* 分数和等级 */}
+          <span className={`font-bold text-sm ${getScoreColor(score)}`}>{score}</span>
+          <span className="text-xs text-gray-400">{grade}级</span>
         </div>
-        
-        {/* 移动端简化显示 */}
-        <span className="sm:hidden text-xs font-medium text-gray-600">{lc.label}</span>
-      </div>
       
       {/* Hover详情面板 */}
       {showDetails && (
@@ -652,6 +665,7 @@ function SentimentIndicator({ sentiment, dashboard }: { sentiment: any; dashboar
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }
@@ -828,15 +842,6 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
       <div className="card bg-gradient-to-r from-slate-50 to-white">
         <div className="flex items-center justify-between mb-3">
           <h2 className="card-title text-lg">📈 大盘行情</h2>
-          <div className="flex items-center gap-3">
-            <SessionBadge session={dashboard?.trading_session || 'CLOSED'} />
-            <RiskLightDisplay 
-              light={summary.risk_light || market.risk_light || 'GREEN'} 
-              bombRate={market.bomb_rate}
-              limitUpCount={(market.limit_up_stocks || []).length}
-              limitDownCount={(market.limit_down_stocks || []).length}
-            />
-          </div>
         </div>
         
         {/* 大盘指数 */}
@@ -1320,10 +1325,11 @@ function PortfolioView({ riskState }: { riskState: any }) {
   )
 }
 
-// ==================== 交易视图 ====================
+// ==================== 交易视图（合并持仓和交易）====================
 
-function TradingView({ tradingStatus, onRefresh }: { 
+function TradingView({ tradingStatus, riskState, onRefresh }: { 
   tradingStatus: any
+  riskState: any
   onRefresh: () => void
 }) {
   const [activeMode, setActiveMode] = useState(tradingStatus?.mode || 'paper')
@@ -1513,11 +1519,45 @@ function TradingView({ tradingStatus, onRefresh }: {
           </div>
         </div>
       )}
+      
+      {/* 风控状态 */}
+      <div className="card">
+        <h2 className="card-title mb-4 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-yellow-500" />
+          风控状态
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <div className={`text-xl font-bold ${(riskState?.consecutive_losses || 0) >= 2 ? 'text-yellow-500' : 'text-gray-700'}`}>
+              {riskState?.consecutive_losses || 0}
+            </div>
+            <div className="text-xs text-muted mt-1">连亏次数</div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <div className={`text-xl font-bold ${(riskState?.daily_pnl_pct || 0) < 0 ? 'text-fall' : 'text-rise'}`}>
+              {formatPercent(riskState?.daily_pnl_pct || 0)}
+            </div>
+            <div className="text-xs text-muted mt-1">日内盈亏</div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <div className="text-xl font-bold text-gray-700">
+              {formatPercent(riskState?.total_position || 0)}
+            </div>
+            <div className="text-xs text-muted mt-1">总仓位</div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <div className={`text-xl font-bold ${riskState?.is_stopped ? 'text-rise' : 'text-green-600'}`}>
+              {riskState?.is_stopped ? '已停止' : '正常'}
+            </div>
+            <div className="text-xs text-muted mt-1">交易状态</div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-// 情绪分析卡片
+// 情绪分析卡片（已移至顶栏，保留备用）
 function SentimentCard({ sentiment }: { sentiment: any }) {
   if (!sentiment) {
     return (
