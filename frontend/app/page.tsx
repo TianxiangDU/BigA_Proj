@@ -588,10 +588,10 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
 
   return (
     <div className="space-y-4">
-      {/* 市场概览看板 */}
+      {/* 大盘指数看板 */}
       <div className="card bg-gradient-to-r from-slate-50 to-white">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="card-title text-lg">📊 市场概览</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="card-title text-lg">📈 大盘行情</h2>
           <RiskLightDisplay 
             light={summary.risk_light || market.risk_light || 'GREEN'} 
             bombRate={market.bomb_rate}
@@ -600,41 +600,53 @@ function DashboardView({ dashboard, candidates, filterStocks }: any) {
           />
         </div>
         
-        {/* 核心指标行 */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+        {/* 大盘指数 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
+          {(market.indices || []).map((idx: any) => (
+            <IndexCard key={idx.code} index={idx} />
+          ))}
+          {(market.indices || []).length === 0 && (
+            <div className="col-span-full text-center text-muted text-sm py-4">
+              加载指数数据中...
+            </div>
+          )}
+        </div>
+        
+        {/* 涨跌停统计 */}
+        <div className="grid grid-cols-5 gap-3 py-3 border-t border-gray-100">
           <div className="text-center">
-            <div className="text-2xl font-bold text-rise">{(market.limit_up_stocks || []).length}</div>
-            <div className="text-xs text-muted">涨停家数</div>
+            <div className="text-xl font-bold text-rise">{(market.limit_up_stocks || []).length}</div>
+            <div className="text-[10px] text-muted">涨停</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-fall">{(market.limit_down_stocks || []).length}</div>
-            <div className="text-xs text-muted">跌停家数</div>
+            <div className="text-xl font-bold text-fall">{(market.limit_down_stocks || []).length}</div>
+            <div className="text-[10px] text-muted">跌停</div>
           </div>
           <div className="text-center">
-            <div className={`text-2xl font-bold ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : 'text-foreground'}`}>
+            <div className={`text-xl font-bold ${(market.bomb_rate || 0) > 0.3 ? 'text-yellow-500' : ''}`}>
               {formatPercent(market.bomb_rate || 0)}
             </div>
-            <div className="text-xs text-muted">炸板率</div>
+            <div className="text-[10px] text-muted">炸板率</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-orange-500">{(market.near_limit_up_stocks || []).length}</div>
-            <div className="text-xs text-muted">冲板中</div>
+            <div className="text-xl font-bold text-orange-500">{(market.near_limit_up_stocks || []).length}</div>
+            <div className="text-[10px] text-muted">冲板</div>
           </div>
           <div className="text-center">
-            <div className={`text-2xl font-bold ${mood.color}`}>{mood.text}</div>
-            <div className="text-xs text-muted">市场情绪</div>
+            <div className={`text-xl font-bold ${mood.color}`}>{mood.text}</div>
+            <div className="text-[10px] text-muted">情绪</div>
           </div>
         </div>
         
         {/* 数据来源和时间 */}
-        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-3">
+        <div className="flex items-center justify-between text-xs text-muted border-t border-gray-100 pt-2">
           <span>数据源: {refreshConfig.data_source || 'akshare'}</span>
           <span>
             {refreshConfig.last_fetch_time 
-              ? `更新于 ${new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')}`
+              ? `${new Date(refreshConfig.last_fetch_time).toLocaleTimeString('zh-CN')}`
               : '--'}
             {refreshConfig.last_fetch_duration_ms && (
-              <span className="ml-2 text-[10px]">耗时{refreshConfig.last_fetch_duration_ms}ms</span>
+              <span className="ml-1 text-[10px]">({refreshConfig.last_fetch_duration_ms}ms)</span>
             )}
           </span>
         </div>
@@ -847,6 +859,29 @@ function StockListCard({ title, icon, stocks, totalCount, expanded, onToggle, co
       ) : (
         <p className="text-muted text-sm py-6 text-center">暂无数据</p>
       )}
+    </div>
+  )
+}
+
+// 大盘指数卡片
+function IndexCard({ index }: { index: any }) {
+  const pctChange = index.pct_change || 0
+  const isUp = pctChange >= 0
+  const colorClass = isUp ? 'text-rise' : 'text-fall'
+  const bgClass = isUp ? 'bg-rise/5' : 'bg-fall/5'
+  
+  return (
+    <div className={`${bgClass} rounded-lg p-3 text-center min-w-[100px]`}>
+      <div className="text-xs text-muted mb-1 truncate font-medium">{index.short || index.name}</div>
+      <div className={`text-lg font-bold ${colorClass} leading-tight`}>
+        {formatNumber(index.close, index.close > 1000 ? 0 : 2)}
+      </div>
+      <div className={`text-sm font-semibold ${colorClass}`}>
+        {isUp ? '+' : ''}{pctChange.toFixed(2)}%
+      </div>
+      <div className={`text-[10px] ${colorClass}`}>
+        {isUp ? '+' : ''}{formatNumber(index.change, 2)}
+      </div>
     </div>
   )
 }

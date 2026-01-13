@@ -238,6 +238,60 @@ class AdataProvider:
         
         return pd.DataFrame()
     
+    def get_index_quotes(self) -> List[Dict]:
+        """获取主要大盘指数行情"""
+        indices = []
+        
+        if not AKSHARE_AVAILABLE:
+            return indices
+        
+        try:
+            # 使用新浪接口获取指数行情（包含上证和深证）
+            df = ak.stock_zh_index_spot_sina()
+            
+            if df is not None and not df.empty:
+                # 主要关注的指数 (使用新浪接口的代码格式)
+                target_indices = {
+                    'sh000001': {'name': '上证指数', 'short': '上证', 'order': 1},
+                    'sz399001': {'name': '深证成指', 'short': '深证', 'order': 2},
+                    'sz399006': {'name': '创业板指', 'short': '创业板', 'order': 3},
+                    'sh000688': {'name': '科创50', 'short': '科创', 'order': 4},
+                    'sh000300': {'name': '沪深300', 'short': '沪深300', 'order': 5},
+                    'sh000016': {'name': '上证50', 'short': '上证50', 'order': 6},
+                    'sz399005': {'name': '中小100', 'short': '中小', 'order': 7},
+                }
+                
+                for _, row in df.iterrows():
+                    code = str(row.get('代码', ''))
+                    if code in target_indices:
+                        try:
+                            indices.append({
+                                'code': code,
+                                'name': target_indices[code]['name'],
+                                'short': target_indices[code]['short'],
+                                'order': target_indices[code]['order'],
+                                'close': float(row.get('最新价', 0) or 0),
+                                'change': float(row.get('涨跌额', 0) or 0),
+                                'pct_change': float(row.get('涨跌幅', 0) or 0),
+                                'open': float(row.get('今开', 0) or 0),
+                                'high': float(row.get('最高', 0) or 0),
+                                'low': float(row.get('最低', 0) or 0),
+                                'volume': float(row.get('成交量', 0) or 0),
+                                'amount': float(row.get('成交额', 0) or 0),
+                            })
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"解析指数数据失败 {code}: {e}")
+                
+                # 按预定义顺序排序
+                indices.sort(key=lambda x: x.get('order', 999))
+                
+                logger.debug(f"获取指数行情成功，共 {len(indices)} 个")
+                
+        except Exception as e:
+            logger.warning(f"获取指数行情失败: {e}")
+        
+        return indices
+    
     def get_daily_bars(self, symbol: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
         """获取日K线"""
         if AKSHARE_AVAILABLE:

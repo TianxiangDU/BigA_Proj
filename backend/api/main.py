@@ -356,9 +356,16 @@ def create_app() -> FastAPI:
     
     @app.get("/api/market/dashboard")
     async def get_dashboard():
-        """获取市场仪表盘 - 包含涨跌停股列表"""
+        """获取市场仪表盘 - 包含涨跌停股列表和大盘指数"""
         if not app_state:
             raise HTTPException(status_code=503, detail="服务未就绪")
+        
+        # 获取大盘指数
+        indices = []
+        try:
+            indices = app_state.data_provider.get_index_quotes()
+        except Exception as e:
+            logger.debug(f"获取大盘指数失败: {e}")
         
         # 获取涨停股、跌停股、接近涨停股
         limit_up_stocks = []
@@ -387,6 +394,7 @@ def create_app() -> FastAPI:
         market_data['limit_up_stocks'] = limit_up_stocks
         market_data['limit_down_stocks'] = limit_down_stocks
         market_data['near_limit_up_stocks'] = near_limit_up_stocks
+        market_data['indices'] = indices  # 大盘指数
         
         # 获取当前刷新间隔
         is_trading = app_state.calendar.is_trading_time()
