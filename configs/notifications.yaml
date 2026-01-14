@@ -1,0 +1,48 @@
+# 通知配置
+# 支持多个通知渠道，收到交易信号时推送到手机
+
+# ===== 企业微信机器人 =====
+# 1. 在企业微信群聊中添加机器人
+# 2. 复制 Webhook 地址
+wecom:
+  enabled: false
+  webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY"
+
+# ===== 钉钉机器人 =====
+# 1. 在钉钉群设置中添加自定义机器人
+# 2. 安全设置选择"加签"，复制密钥
+dingtalk:
+  enabled: false
+  webhook: "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN"
+  secret: "YOUR_SECRET"  # 加签密钥
+
+# ===== 飞书机器人 =====
+feishu:
+  enabled: false
+  webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN"
+
+# ===== Bark (iOS 推送) =====
+# 1. App Store 下载 Bark
+# 2. 复制你的推送地址
+bark:
+  enabled: false
+  url: "https://api.day.app/YOUR_KEY"
+
+# ===== Telegram =====
+# 1. 找 @BotFather 创建 Bot
+# 2. 获取 Bot Token
+# 3. 获取你的 Chat ID
+telegram:
+  enabled: false
+  bot_token: "YOUR_BOT_TOKEN"
+  chat_id: "YOUR_CHAT_ID"
+
+# ===== 使用环境变量（推荐）=====
+# 不想在配置文件中存储敏感信息？使用环境变量：
+#
+# export WECOM_WEBHOOK="https://qyapi.weixin.qq.com/..."
+# export DINGTALK_WEBHOOK="https://oapi.dingtalk.com/..."
+# export DINGTALK_SECRET="..."
+# export BARK_URL="https://api.day.app/..."
+# export TELEGRAM_BOT_TOKEN="..."
+# export TELEGRAM_CHAT_ID="..."
