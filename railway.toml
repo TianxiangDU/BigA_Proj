@@ -8,6 +8,10 @@ healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
+[variables]
+TZ = "Asia/Shanghai"
+PYTHONUNBUFFERED = "1"
+
 [[services]]
 name = "backend"
 internalPort = 8000

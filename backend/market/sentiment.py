@@ -8,6 +8,8 @@ from loguru import logger
 import pandas as pd
 import numpy as np
 
+from ..core import timezone as tz
+
 
 class MarketSentiment:
     """
@@ -47,7 +49,7 @@ class MarketSentiment:
             包含所有情绪指标的字典
         """
         result = {
-            'ts': datetime.now().isoformat(),
+            'ts': tz.now().isoformat(),
             
             # === 涨跌停分析 ===
             'limit_up_count': 0,           # 涨停家数

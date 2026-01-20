@@ -5,6 +5,14 @@
 import os
 import sys
 
+# 设置时区为北京时间（必须在导入其他模块之前）
+os.environ['TZ'] = 'Asia/Shanghai'
+try:
+    import time
+    time.tzset()  # Unix 系统生效
+except AttributeError:
+    pass  # Windows 不支持 tzset
+
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

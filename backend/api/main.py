@@ -17,6 +17,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ..core.config import AppConfig
 from ..core.calendar import TradingCalendar
+from ..core import timezone as tz
 from ..core.qa import DataQualityChecker
 from ..storage.db import Database
 from ..adapters.adata_provider import AdataProvider
@@ -147,14 +148,14 @@ async def refresh_data():
         session = app_state.calendar.get_trading_session()
         logger.debug(f"开始刷新数据... 当前时段: {session}")
         
-        # 记录开始时间
-        fetch_start = datetime.now()
+        # 记录开始时间（北京时间）
+        fetch_start = tz.now()
         
         # 获取全市场实时行情
         quotes_df = app_state.data_provider.get_realtime_quote_batch()
         
-        # 记录获取数据耗时
-        fetch_end = datetime.now()
+        # 记录获取数据耗时（北京时间）
+        fetch_end = tz.now()
         fetch_duration_ms = int((fetch_end - fetch_start).total_seconds() * 1000)
         
         # 保存获取时间信息
@@ -347,8 +348,8 @@ def create_app() -> FastAPI:
     
     @app.get("/api/health")
     async def health_check():
-        """健康检查"""
-        return {"status": "ok", "ts": datetime.now().isoformat()}
+        """健康检查（北京时间）"""
+        return {"status": "ok", "ts": tz.now().isoformat(), "timezone": "Asia/Shanghai"}
     
     @app.post("/api/refresh")
     async def manual_refresh():
@@ -428,7 +429,7 @@ def create_app() -> FastAPI:
                 'last_fetch_time': app_state._last_fetch_time.isoformat() if app_state._last_fetch_time else None,
                 'last_fetch_duration_ms': app_state._last_fetch_duration_ms,
                 'fetch_count': app_state._fetch_count,
-                'response_time': datetime.now().isoformat()
+                'response_time': tz.now().isoformat()
             }
         }
     
@@ -899,7 +900,7 @@ def create_app() -> FastAPI:
         return {
             'status': 'ok',
             'message': 'Agent API 可用',
-            'ts': datetime.now().isoformat(),
+            'ts': tz.now().isoformat(),
             'endpoints': {
                 'input_bundle': 'GET /api/agent/input_bundle?symbol=xxx&strategy_id=xxx',
                 'apply_output': 'POST /api/agent/apply_output',
