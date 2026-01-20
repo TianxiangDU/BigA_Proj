@@ -351,6 +351,39 @@ def create_app() -> FastAPI:
         """健康检查（北京时间）"""
         return {"status": "ok", "ts": tz.now().isoformat(), "timezone": "Asia/Shanghai"}
     
+    @app.get("/api/debug/status")
+    async def debug_status():
+        """调试接口 - 检查系统状态"""
+        from ..adapters.adata_provider import AKSHARE_AVAILABLE, ADATA_AVAILABLE
+        
+        # 尝试获取一条数据
+        test_data = None
+        data_error = None
+        try:
+            if app_state and app_state.data_provider:
+                df = app_state.data_provider.get_realtime_quote_batch()
+                test_data = {
+                    "count": len(df),
+                    "columns": list(df.columns) if not df.empty else [],
+                    "sample": df.head(3).to_dict('records') if not df.empty else []
+                }
+        except Exception as e:
+            data_error = str(e)
+        
+        return {
+            "ts": tz.now().isoformat(),
+            "akshare_available": AKSHARE_AVAILABLE,
+            "adata_available": ADATA_AVAILABLE,
+            "app_state_ready": app_state is not None,
+            "data_provider_ready": app_state.data_provider is not None if app_state else False,
+            "cache_exists": app_state.data_provider._quote_cache is not None if app_state and app_state.data_provider else False,
+            "test_data": test_data,
+            "data_error": data_error,
+            "market_features": app_state._market_features if app_state else None,
+            "candidates_count": len(app_state._candidates) if app_state else 0,
+            "fetch_count": app_state._fetch_count if app_state else 0
+        }
+    
     @app.post("/api/refresh")
     async def manual_refresh():
         """手动刷新数据"""
