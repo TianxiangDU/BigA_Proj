@@ -25,15 +25,21 @@ def main():
     os.makedirs("data", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
     
+    # Railway 等云平台通过 PORT 环境变量指定端口
+    port = int(os.environ.get("PORT", 8000))
+    # 生产环境检测
+    is_production = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("PRODUCTION")
+    
     logger.info("=" * 50)
     logger.info("A股打板提示工具 - 后端服务启动")
+    logger.info(f"端口: {port}, 生产模式: {bool(is_production)}")
     logger.info("=" * 50)
     
     uvicorn.run(
         "backend.api.main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,
+        port=port,
+        reload=not is_production,  # 生产环境禁用热重载
         log_level="info"
     )
 
